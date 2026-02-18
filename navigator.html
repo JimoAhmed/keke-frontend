@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Babcock Navigator - Real-Time Guidance</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/jpeg" href="images/bu.jpg">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+
+  <div id="splash">
+    <h1>Welcome to Babcock Campus Navigator</h1>
+    <p>Finding your way around just got easier.</p>
+    <button onclick="hideSplash()">Start Navigation</button>
+  </div>
+
+
+  <div id="controls" style="display: none;">
+    <h2>Where do you want to go?</h2>
+    <select id="category-select" onchange="filterLocations()">
+      <option value="All">All</option>
+      <option value="Academic Buildings">Academic Buildings</option>
+      <option value="Hostels">Hostels</option>
+      <option value="Administrative Block">Administrative Block</option>
+      <option value="Cafeteria">Cafeteria</option>
+      <option value="Gates">Gates</option>
+      <option value="Banks">Banks</option>
+      <option value="Recreation Centres">Recreation Centres</option>
+      <option value="Hospital">Hospital</option>
+    </select>
+
+    <input type="text" id="destination-input" placeholder="Search destination..." list="locations" />
+    <datalist id="locations"></datalist>
+
+    <button onclick="startNavigation()">Go</button>
+  </div>
+
+
+  <div id="mode-selector" class="hidden">
+    <p>Choose travel mode:</p>
+    <div class="mode-buttons">
+  <button onclick="startDirections('WALKING')">🚶 Walk</button>
+  <button onclick="startDirections('DRIVING')">🚗 Drive</button>
+  <button onclick="startTricycleNavigation()">🚐 Find Tricycle</button>
+</div>
+    <!-- Tricycle System -->
+<div id="tricycle-toggle-container">
+  <button id="tricycle-toggle-btn" onclick="toggleTricycleView()">
+    <i class="fas fa-shuttle-van"></i> Show Campus Tricycles
+  </button>
+</div>
+
+<div id="tricycle-panel" class="hidden">
+  <div class="tricycle-panel-header">
+    <h3><i class="fas fa-shuttle-van"></i> Available Tricycles</h3>
+    <button class="close-btn" onclick="toggleTricycleView()">×</button>
+  </div>
+  <div id="tricycle-list">
+    <p class="loading-text">Loading tricycles...</p>
+  </div>
+  <div class="tricycle-panel-footer">
+    <small>Click a tricycle to see details on map</small>
+  </div>
+</div>
+  </div>
+
+  <!-- Voice Toggle Button -->
+  <button id="voice-toggle" class="hidden">🔊 Voice ON</button>
+
+  <!-- Directions panel -->
+  <div id="directions-panel" class="hidden">
+    <h3>Navigation Instructions</h3>
+    <p id="current-instruction">Waiting for your movement...</p>
+    <p id="remaining-distance"></p>
+    <p id="remaining-duration"></p>
+  </div>
+
+  <!-- End Navigation Button -->
+  <button id="end-navigation-btn" onclick="endNavigation()">End Navigation</button>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Scripts -->
+  <script src="script.js"></script>
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA0gSGUx7UEnqtLTnRbxe5-Inkbzxur95s&callback=initMap">
+  </script>
+</body>
+</html>

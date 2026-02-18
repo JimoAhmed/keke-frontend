@@ -1,0 +1,1537 @@
+/* ============================================
+   BABCOCK CAMPUS NAVIGATOR - MOBILE RESPONSIVE CSS
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  height: 100%;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+}
+
+/* ============== SPLASH SCREEN ============== */
+#splash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #004080, #002856);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+#splash h1 { 
+  font-size: clamp(1.8rem, 8vw, 2.8rem); 
+  margin-bottom: 20px; 
+  font-weight: 700;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+
+#splash p { 
+  font-size: clamp(1rem, 4vw, 1.3rem); 
+  margin-bottom: 30px; 
+  opacity: 0.9;
+}
+
+#splash button {
+  padding: 15px 40px;
+  font-size: clamp(1rem, 5vw, 1.2rem);
+  border: none;
+  border-radius: 50px;
+  background-color: #ffffff;
+  color: #004080;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: bold;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  border: 2px solid transparent;
+}
+
+#splash button:hover, 
+#splash button:active { 
+  background-color: #cce0ff; 
+  transform: scale(1.05);
+  border-color: white;
+}
+
+/* ============== MAP ============== */
+#map { 
+  width: 100%; 
+  height: 100%; 
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* ============== CONTROLS PANEL ============== */
+#controls {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+  z-index: 100;
+  width: 320px;
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: all 0.3s ease;
+}
+
+#controls h2 { 
+  font-size: 1.3em; 
+  margin-bottom: 15px; 
+  color: #004080;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#controls h2 i {
+  color: #28a745;
+}
+
+#controls select, 
+#controls input {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1em;
+  transition: all 0.3s;
+  background: white;
+}
+
+#controls select:focus, 
+#controls input:focus {
+  border-color: #004080;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0,64,128,0.1);
+}
+
+#controls button {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #004080, #003060);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 1.1em;
+  font-weight: bold;
+  margin-top: 10px;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+#controls button:hover,
+#controls button:active { 
+  background: linear-gradient(135deg, #003060, #002040);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,64,128,0.3);
+}
+
+/* ============== MODE SELECTOR ============== */
+#mode-selector {
+  position: absolute;
+  top: 280px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+  z-index: 90;
+  width: 320px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: all 0.3s;
+}
+
+#mode-selector p { 
+  margin-bottom: 15px; 
+  font-weight: bold;
+  color: #004080;
+  font-size: 1.1em;
+}
+
+#mode-selector .mode-buttons { 
+  display: flex; 
+  gap: 12px; 
+}
+
+#mode-selector .mode-buttons button {
+  flex: 1;
+  padding: 14px 0;
+  background-color: #f8f9fa;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s;
+  color: #333;
+  font-size: 1em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+#mode-selector .mode-buttons button:hover,
+#mode-selector .mode-buttons button:active {
+  border: 2px solid #004080;
+  color: #004080;
+  background-color: #e9f7ff;
+  transform: scale(0.98);
+}
+
+#mode-selector .mode-buttons button i {
+  font-size: 1.2em;
+}
+
+/* ============== VOICE TOGGLE ============== */
+#voice-toggle {
+  position: fixed;
+  bottom: 120px;
+  right: 20px;
+  z-index: 1000;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #17a2b8, #138496);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(23,162,184,0.3);
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#voice-toggle:hover,
+#voice-toggle:active { 
+  background: linear-gradient(135deg, #138496, #117a8b);
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(23,162,184,0.4);
+}
+
+/* ============== END NAVIGATION BUTTON - HIDDEN BY DEFAULT ============== */
+#end-navigation-btn {
+  position: fixed;
+  bottom: 200px;
+  right: 20px;
+  z-index: 1000;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(220,53,69,0.3);
+  transition: all 0.3s;
+  display: none; /* HIDDEN BY DEFAULT - ONLY SHOWS DURING ACTIVE NAVIGATION */
+  align-items: center;
+  gap: 10px;
+  font-size: 1em;
+}
+
+#end-navigation-btn.visible {
+  display: flex; /* SHOW ONLY WHEN NAVIGATION IS ACTIVE */
+}
+
+#end-navigation-btn:hover,
+#end-navigation-btn:active { 
+  background: linear-gradient(135deg, #c82333, #b21f2d);
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(220,53,69,0.4);
+}
+
+/* ============== TRICYCLE SYSTEM ============== */
+#tricycle-toggle-container {
+  position: absolute;
+  top: 140px;
+  left: 20px;
+  z-index: 90;
+  background: transparent;
+}
+
+#tricycle-toggle-btn {
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #004080, #003060);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 15px rgba(0,64,128,0.3);
+  transition: all 0.3s;
+}
+
+#tricycle-toggle-btn:hover,
+#tricycle-toggle-btn:active {
+  background: linear-gradient(135deg, #003060, #002040);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,64,128,0.4);
+}
+
+#tricycle-toggle-btn i {
+  font-size: 1.2em;
+}
+
+/* ============== TRICYCLE PANEL ============== */
+#tricycle-panel {
+  position: absolute;
+  top: 200px;
+  left: 20px;
+  background: white;
+  width: 350px;
+  max-height: 600px;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  z-index: 1000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.tricycle-panel-header {
+  background: linear-gradient(135deg, #004080, #003060);
+  color: white;
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tricycle-panel-header h3 {
+  margin: 0;
+  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.close-btn {
+  background: rgba(255,255,255,0.2);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 1.5em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+}
+
+.close-btn:hover,
+.close-btn:active {
+  background: rgba(255,255,255,0.3);
+  transform: rotate(90deg);
+}
+
+#tricycle-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  max-height: 450px;
+  background: #f8f9fa;
+}
+
+/* ============== TRICYCLE CARDS ============== */
+.tricycle-card {
+  background: white;
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 15px;
+  border-left: 6px solid #004080;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 1px solid #e9ecef;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.tricycle-card:hover,
+.tricycle-card:active {
+  background: #e9f7ff;
+  transform: translateX(5px);
+  box-shadow: 0 8px 20px rgba(0,64,128,0.15);
+  border-left: 6px solid #28a745;
+}
+
+.tricycle-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.tricycle-name {
+  font-weight: bold;
+  color: #004080;
+  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tricycle-type {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: bold;
+}
+
+.tricycle-details {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  font-size: 0.95em;
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.detail-label {
+  color: #6c757d;
+  font-size: 0.8em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  font-weight: bold;
+  color: #004080;
+  font-size: 1.2em;
+}
+
+/* Battery Colors */
+.battery-high { color: #28a745; }
+.battery-medium { color: #ffc107; }
+.battery-low { color: #dc3545; }
+
+/* Color Indicators */
+.color-indicator {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 6px;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.color-blue { background-color: #007bff; }
+.color-red { background-color: #dc3545; }
+.color-green { background-color: #28a745; }
+.color-yellow { background-color: #ffc107; }
+
+/* Capacity Badge */
+.capacity-badge {
+  background: #17a2b8;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: bold;
+}
+
+.tricycle-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 5px;
+}
+
+.reserve-btn {
+  flex: 1;
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s;
+  font-size: 0.95em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.reserve-btn:hover:not(:disabled),
+.reserve-btn:active:not(:disabled) {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(40,167,69,0.3);
+}
+
+.reserve-btn:disabled {
+  background: #adb5bd;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.details-btn {
+  flex: 0.5;
+  background: linear-gradient(135deg, #17a2b8, #138496);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 0.95em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.details-btn:hover,
+.details-btn:active {
+  background: linear-gradient(135deg, #138496, #117a8b);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(23,162,184,0.3);
+}
+
+.tricycle-panel-footer {
+  background: #f8f9fa;
+  padding: 15px 20px;
+  border-top: 1px solid #dee2e6;
+  text-align: center;
+  color: #6c757d;
+  font-size: 0.9em;
+}
+
+/* Reserved Status */
+.reserved-status {
+  margin-top: 12px;
+  padding: 10px;
+  background: #fff3cd;
+  border-radius: 10px;
+  font-size: 0.9em;
+  color: #856404;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-left: 4px solid #ffc107;
+}
+
+/* No Tricycles Message */
+.no-tricycles {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c757d;
+}
+
+.no-tricycles i {
+  font-size: 4em;
+  margin-bottom: 20px;
+  color: #adb5bd;
+}
+
+.no-tricycles h3 {
+  color: #004080;
+  margin-bottom: 10px;
+}
+
+.loading-text {
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  padding: 40px;
+  font-size: 1.1em;
+}
+
+/* ============== ETA MODAL ============== */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  overflow-y: auto;
+  backdrop-filter: blur(5px);
+}
+
+.modal-content {
+  background-color: white;
+  margin: 5% auto;
+  padding: 25px;
+  border-radius: 20px;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.3);
+  animation: modalSlideIn 0.4s ease-out;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-60px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============== TRACKING PANEL ============== */
+#tracking-panel {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 350px;
+  z-index: 1000;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* ============== SHOW TRACKING PANEL BUTTON ============== */
+#show-tracking-panel-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #004080, #003060);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,64,128,0.3);
+  display: none;
+  transition: all 0.3s;
+  align-items: center;
+  gap: 10px;
+}
+
+#show-tracking-panel-btn:hover,
+#show-tracking-panel-btn:active {
+  background: linear-gradient(135deg, #003060, #002040);
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(0,64,128,0.4);
+}
+
+/* ============== START RIDE BUTTON ============== */
+#start-ride-btn {
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.1em;
+  font-weight: bold;
+  cursor: pointer;
+  margin: 15px 0;
+  width: 100%;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 4px 15px rgba(40,167,69,0.3);
+}
+
+#start-ride-btn:hover,
+#start-ride-btn:active {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(40,167,69,0.4);
+}
+
+#start-ride-btn i {
+  font-size: 1.3em;
+}
+
+/* ============== ARRIVAL NOTIFICATION ============== */
+.arrival-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  padding: 20px;
+  border-radius: 16px;
+  z-index: 10000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  max-width: 350px;
+  border-left: 6px solid #1e7e34;
+  animation: slideInRight 0.4s;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.arrival-notification-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.arrival-notification i {
+  font-size: 2em;
+}
+
+.arrival-notification strong {
+  font-size: 1.2em;
+}
+
+.arrival-notification p {
+  margin: 8px 0 0 0;
+  font-size: 0.95em;
+  opacity: 0.9;
+}
+
+/* ============== UTILITY CLASSES ============== */
+.hidden { 
+  display: none !important; 
+}
+
+.hide-travel-mode { 
+  display: none !important; 
+}
+
+/* ============== PROGRESS BAR ============== */
+#progress-bar {
+  height: 6px;
+  background: linear-gradient(90deg, #28a745, #20c997);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* ============== GREEN DOT ANIMATION ============== */
+.green-dot {
+  background-color: #28a745;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 4px solid white;
+  box-shadow: 0 0 20px rgba(40, 167, 69, 0.5);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(40, 167, 69, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+  }
+}
+
+/* ============== NAVIGATION TRACKER ============== */
+#navigation-tracker {
+  border: 1px solid rgba(0,64,128,0.2);
+}
+
+/* ============== DRIVER INFO SECTION ============== */
+.driver-info {
+  background: #e9f7ff;
+  padding: 15px;
+  border-radius: 12px;
+  margin: 15px 0;
+  border-left: 4px solid #004080;
+}
+
+.driver-info-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.driver-info-item:last-child {
+  margin-bottom: 0;
+}
+
+.driver-info-icon {
+  width: 40px;
+  height: 40px;
+  background: #004080;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2em;
+}
+
+.driver-info-text {
+  flex: 1;
+}
+
+.driver-info-label {
+  font-size: 0.8em;
+  color: #6c757d;
+  margin-bottom: 2px;
+}
+
+.driver-info-value {
+  font-weight: bold;
+  color: #004080;
+  font-size: 1.1em;
+}
+
+.driver-call-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  transition: all 0.3s;
+}
+
+.driver-call-btn:hover,
+.driver-call-btn:active {
+  background: #218838;
+  transform: scale(1.02);
+}
+
+/* ============== KEKE-POOL TOGGLE ============== */
+.keke-pool-toggle {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 12px;
+  margin: 15px 0;
+  border: 1px solid #dee2e6;
+}
+
+.keke-pool-options {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.keke-pool-option {
+  flex: 1;
+  padding: 12px;
+  text-align: center;
+  background: white;
+  border: 2px solid #dee2e6;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+.keke-pool-option.selected {
+  background: #004080;
+  color: white;
+  border-color: #004080;
+}
+
+.keke-pool-option i {
+  display: block;
+  font-size: 1.5em;
+  margin-bottom: 5px;
+}
+
+.keke-pool-waiting {
+  background: #fff3cd;
+  padding: 15px;
+  border-radius: 10px;
+  margin: 15px 0;
+  color: #856404;
+  text-align: center;
+  border-left: 4px solid #ffc107;
+}
+
+.keke-pool-riders {
+  margin: 15px 0;
+}
+
+.keke-pool-rider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.keke-pool-rider-avatar {
+  width: 40px;
+  height: 40px;
+  background: #004080;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.keke-pool-rider-info {
+  flex: 1;
+}
+
+.keke-pool-rider-name {
+  font-weight: bold;
+  color: #004080;
+}
+
+.keke-pool-rider-location {
+  font-size: 0.85em;
+  color: #6c757d;
+}
+
+/* ============== =================================== ============== */
+/* ============== MOBILE RESPONSIVE MEDIA QUERIES ============== */
+/* ============== =================================== ============== */
+
+/* ===== SMALL PHONES (PORTRAIT) - COMPLETE OVERHAUL ===== */
+@media (max-width: 480px) {
+  /* Global adjustments */
+  body {
+    font-size: 14px;
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+  
+  /* Splash screen */
+  #splash {
+    padding: 15px;
+  }
+  
+  #splash h1 {
+    font-size: 1.8rem;
+  }
+  
+  #splash p {
+    font-size: 1rem;
+  }
+  
+  #splash button {
+    padding: 14px 30px;
+    width: 90%;
+    max-width: 280px;
+  }
+  
+  /* ===== CONTROLS - CONDENSED VERSION ===== */
+  #controls {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    width: calc(100% - 20px);
+    padding: 12px;
+    border-radius: 12px;
+    z-index: 1000;
+  }
+  
+  #controls h2 {
+    font-size: 1.1em;
+    margin-bottom: 8px;
+  }
+  
+  #controls h2 i {
+    font-size: 1.2em;
+  }
+  
+  /* Hide the "Where do you want to go?" label on mobile */
+  #controls label {
+    display: none;
+  }
+  
+  /* Make the input more compact */
+  #controls select,
+  #controls input {
+    padding: 10px;
+    margin: 4px 0;
+    font-size: 14px;
+  }
+  
+  /* Hide category selector initially */
+  #controls .category-row {
+    display: none;
+  }
+  
+  /* Show category when destination input is focused */
+  #destination-input:focus ~ .category-row,
+  #destination-input:active ~ .category-row {
+    display: block;
+  }
+  
+  /* ===== TRICYCLE TOGGLE - MOVED TO BOTTOM ===== */
+  #tricycle-toggle-container {
+    top: auto;
+    bottom: 20px;
+    left: 10px;
+    right: 10px;
+    width: calc(100% - 20px);
+  }
+  
+  #tricycle-toggle-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 14px;
+    border-radius: 40px;
+    font-size: 0.95em;
+  }
+  
+  /* ===== MODE SELECTOR - BOTTOM SHEET ===== */
+  #mode-selector {
+    top: auto;
+    bottom: 90px;
+    left: 10px;
+    right: 10px;
+    width: calc(100% - 20px);
+    padding: 15px;
+    border-radius: 16px;
+    z-index: 950;
+  }
+  
+  #mode-selector .mode-buttons {
+    flex-direction: row;
+    gap: 8px;
+  }
+  
+  #mode-selector .mode-buttons button {
+    padding: 14px 0;
+    font-size: 0.9em;
+  }
+  
+  /* ===== VOICE TOGGLE - ADJUSTED POSITION ===== */
+  #voice-toggle {
+    bottom: 160px;
+    right: 10px;
+    padding: 12px 16px;
+    font-size: 0.9em;
+    border-radius: 40px;
+    z-index: 900;
+  }
+  
+  /* ===== END NAVIGATION BUTTON - ADJUSTED ===== */
+  #end-navigation-btn {
+    bottom: 220px;
+    right: 10px;
+    padding: 12px 18px;
+    font-size: 0.9em;
+  }
+  
+  /* ===== TRICYCLE PANEL - BOTTOM SHEET ===== */
+  #tricycle-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 25px 25px 0 0;
+    box-shadow: 0 -5px 30px rgba(0,0,0,0.2);
+  }
+  
+  .tricycle-panel-header {
+    padding: 15px 20px;
+  }
+  
+  .tricycle-panel-header h3 {
+    font-size: 1.1em;
+  }
+  
+  .close-btn {
+    width: 40px;
+    height: 40px;
+  }
+  
+  #tricycle-list {
+    padding: 15px;
+    max-height: 60vh;
+  }
+  
+  /* Bottom sheet handle */
+  .bottom-sheet-handle {
+    display: block;
+    width: 50px;
+    height: 5px;
+    background: #ccc;
+    border-radius: 3px;
+    margin: 10px auto;
+  }
+  
+  /* ===== TRICYCLE CARDS - COMPACT ===== */
+  .tricycle-card {
+    padding: 15px;
+    margin-bottom: 12px;
+  }
+  
+  .tricycle-name {
+    font-size: 1.1em;
+  }
+  
+  .tricycle-details {
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  
+  .detail-value {
+    font-size: 1.1em;
+  }
+  
+  .tricycle-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .reserve-btn,
+  .details-btn {
+    padding: 14px;
+    width: 100%;
+    font-size: 1em;
+  }
+  
+  /* ===== TRACKING PANEL - BOTTOM SHEET ===== */
+  #tracking-panel {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    border-radius: 25px 25px 0 0;
+    max-height: 70vh;
+  }
+  
+  /* ===== SHOW TRACKING PANEL BUTTON ===== */
+  #show-tracking-panel-btn {
+    bottom: 20px;
+    right: 20px;
+    left: auto;
+    width: auto;
+    padding: 14px 20px;
+    border-radius: 40px;
+  }
+  
+  /* ===== ETA MODAL - FULL SCREEN ===== */
+  .modal-content {
+    margin: 0;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    border-radius: 0;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  
+  @keyframes modalSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* ===== NAVIGATION TRACKER - BOTTOM SHEET ===== */
+  #navigation-tracker {
+    left: 10px;
+    right: 10px;
+    width: calc(100% - 20px);
+    bottom: 10px;
+    border-radius: 16px;
+  }
+  
+  /* ===== ARRIVAL NOTIFICATION ===== */
+  .arrival-notification {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    width: calc(100% - 20px);
+    max-width: none;
+    padding: 15px;
+  }
+  
+  .arrival-notification i {
+    font-size: 1.6em;
+  }
+  
+  .arrival-notification strong {
+    font-size: 1.1em;
+  }
+  
+  /* ===== DRIVER INFO - COMPACT ===== */
+  .driver-info {
+    padding: 12px;
+    margin: 12px 0;
+  }
+  
+  .driver-info-item {
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  
+  .driver-info-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1em;
+  }
+  
+  .driver-info-value {
+    font-size: 1em;
+  }
+  
+  .driver-call-btn {
+    padding: 12px;
+    font-size: 1em;
+  }
+  
+  /* ===== KEKE-POOL - COMPACT ===== */
+  .keke-pool-toggle {
+    padding: 12px;
+    margin: 12px 0;
+  }
+  
+  .keke-pool-options {
+    gap: 8px;
+  }
+  
+  .keke-pool-option {
+    padding: 10px;
+  }
+  
+  .keke-pool-option i {
+    font-size: 1.3em;
+  }
+  
+  .keke-pool-waiting {
+    padding: 12px;
+    margin: 12px 0;
+  }
+  
+  .keke-pool-rider {
+    padding: 8px;
+  }
+  
+  .keke-pool-rider-avatar {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* ===== MEDIUM PHONES & SMALL TABLETS ===== */
+@media (min-width: 481px) and (max-width: 768px) {
+  /* Controls */
+  #controls {
+    width: 340px;
+  }
+  
+  /* Mode selector */
+  #mode-selector {
+    width: 340px;
+  }
+  
+  /* Tricycle panel */
+  #tricycle-panel {
+    width: 380px;
+  }
+  
+  /* Tricycle toggle */
+  #tricycle-toggle-container {
+    left: 20px;
+  }
+  
+  /* Tracking panel */
+  #tracking-panel {
+    width: 380px;
+  }
+  
+  /* ETA Modal */
+  .modal-content {
+    width: 90%;
+    max-width: 500px;
+  }
+}
+
+/* ===== TABLETS & SMALL LAPTOPS ===== */
+@media (min-width: 769px) and (max-width: 1024px) {
+  #controls {
+    width: 350px;
+  }
+  
+  #mode-selector {
+    width: 350px;
+  }
+  
+  #tricycle-panel {
+    width: 380px;
+  }
+  
+  #tracking-panel {
+    width: 380px;
+  }
+}
+
+/* ===== LANDSCAPE MODE ON PHONES ===== */
+@media (max-width: 900px) and (orientation: landscape) {
+  /* Controls */
+  #controls {
+    top: 10px;
+    left: 10px;
+    width: 280px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  /* Mode selector */
+  #mode-selector {
+    top: auto;
+    bottom: 10px;
+    left: 10px;
+    width: 280px;
+  }
+  
+  /* Tricycle panel */
+  #tricycle-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 85vh;
+  }
+  
+  #tricycle-list {
+    max-height: 50vh;
+  }
+  
+  /* Hide voice toggle in landscape */
+  #voice-toggle {
+    display: none !important;
+  }
+  
+  /* Adjust tricycle cards for landscape */
+  .tricycle-card {
+    padding: 12px;
+  }
+  
+  .tricycle-details {
+    padding: 10px;
+  }
+  
+  .tricycle-actions {
+    flex-direction: row;
+  }
+  
+  /* Tricycle toggle in landscape */
+  #tricycle-toggle-container {
+    bottom: 10px;
+    right: 10px;
+    left: auto;
+    width: auto;
+  }
+  
+  #tricycle-toggle-btn {
+    width: auto;
+    padding: 10px 16px;
+  }
+}
+
+/* ===== DARK MODE SUPPORT ===== */
+@media (prefers-color-scheme: dark) {
+  /* Will be implemented when dark mode is needed */
+}
+
+/* ===== HIGH CONTRAST MODE ===== */
+@media (prefers-contrast: high) {
+  * {
+    border-width: 2px !important;
+  }
+  
+  #splash button {
+    border: 2px solid white;
+  }
+  
+  .tricycle-card {
+    border: 2px solid #004080;
+  }
+}
+
+/* ===== REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============== PRINT STYLES ============== */
+@media print {
+  #map {
+    display: none;
+  }
+  
+  #controls,
+  #mode-selector,
+  #tricycle-toggle-container,
+  #voice-toggle,
+  #end-navigation-btn {
+    position: static;
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+}
+
+/* ============== UTILITY CLASSES ============== */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.mt-1 { margin-top: 5px; }
+.mt-2 { margin-top: 10px; }
+.mt-3 { margin-top: 15px; }
+.mt-4 { margin-top: 20px; }
+
+.mb-1 { margin-bottom: 5px; }
+.mb-2 { margin-bottom: 10px; }
+.mb-3 { margin-bottom: 15px; }
+.mb-4 { margin-bottom: 20px; }
+
+.p-1 { padding: 5px; }
+.p-2 { padding: 10px; }
+.p-3 { padding: 15px; }
+.p-4 { padding: 20px; }
+
+/* Touch-friendly tap targets */
+button, 
+select, 
+input, 
+.tricycle-card,
+.close-btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Prevent text selection on interactive elements */
+button,
+.tricycle-card,
+.close-btn {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Better touch scrolling */
+#tricycle-list,
+.modal-content,
+#tracking-panel {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.fa-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Focus states for accessibility */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 3px solid #004080;
+  outline-offset: 2px;
+}
+
+/* Fix for iOS input zoom */
+@media screen and (-webkit-min-device-pixel-ratio: 0) { 
+  select,
+  textarea,
+  input {
+    font-size: 16px !important;
+  }
+}
+
+/* Bottom sheet handle for mobile panels */
+.bottom-sheet-handle {
+  width: 50px;
+  height: 5px;
+  background: #ccc;
+  border-radius: 3px;
+  margin: 10px auto;
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .bottom-sheet-handle {
+    display: block;
+  }
+}
