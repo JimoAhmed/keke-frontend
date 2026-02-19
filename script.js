@@ -1659,14 +1659,21 @@ function calculatePoolETAAndStartLocal() {
     }));
 
     // â”€â”€ SAME-LOCATION DETECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // If all riders are within 20m of each other, treat them as same location.
+    // If all riders are within a realistic GPS drift radius, treat as same location.
     // The tricycle simulates arriving at that shared spot, picks everyone up at
     // once, then switches immediately to real Google Maps DRIVING navigation.
-    const SAME_LOCATION_THRESHOLD_KM = 0.02; // 20 metres
+    const SAME_LOCATION_THRESHOLD_KM = 0.08; // 80 meters
+    const centroid = rawRiders.reduce((acc, r) => {
+        acc.lat += r.pickupLat;
+        acc.lng += r.pickupLng;
+        return acc;
+    }, { lat: 0, lng: 0 });
+    centroid.lat /= rawRiders.length;
+    centroid.lng /= rawRiders.length;
     const allAtSameLocation = rawRiders.every(r =>
         calculateHaversineDistance(
             { lat: r.pickupLat, lng: r.pickupLng },
-            { lat: rawRiders[0].pickupLat, lng: rawRiders[0].pickupLng }
+            { lat: centroid.lat, lng: centroid.lng }
         ) < SAME_LOCATION_THRESHOLD_KM
     );
 
