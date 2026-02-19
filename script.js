@@ -212,6 +212,35 @@ function checkExistingReservation() {
     }
 }
 
+async function reconcilePersistedSessionWithBackend() {
+    // If no local session, nothing to reconcile.
+    if (!userSession.hasActiveReservation || !userSession.vehicleId) return;
+    try {
+        const res = await fetch(`/api/vehicles/${userSession.vehicleId}`);
+        if (!res.ok) return;
+        const vehicle = await res.json();
+        // If vehicle is free again, local session is stale -> clear it automatically.
+        if (vehicle.available === true && vehicle.reservedForPool === false && (vehicle.passengerCount || 0) === 0) {
+            localStorage.removeItem('activeReservation');
+            clearPoolSession();
+            localStorage.removeItem('riderId');
+            userSession = {
+                hasActiveReservation: false,
+                currentReservationId: null,
+                reservationExpiry: null,
+                vehicleId: null,
+                vehicleName: null,
+                vehicleDetails: null,
+                passengerCount: 0,
+                pickupETA: null
+            };
+            ridePhase = 'none';
+        }
+    } catch (error) {
+        console.warn('Session reconcile skipped:', error);
+    }
+}
+
 function persistPoolSession() {
     const payload = {
         currentPoolId,
@@ -242,6 +271,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     setTimeout(checkPreSelectedCategory, 500);
     setTimeout(checkExistingReservation, 1000);
+    setTimeout(reconcilePersistedSessionWithBackend, 1500);
     const voiceBtn = document.getElementById("voice-toggle");
     if (voiceBtn) {
         voiceBtn.addEventListener("click", () => {
