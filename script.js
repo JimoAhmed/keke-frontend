@@ -41,6 +41,8 @@ let kekePoolCheckInterval = null;
 let poolRideData = null;
 let currentPickupIndex = 0;
 let pickupSimulationInterval = null;
+let poolSyncState = null;
+let serverClockOffsetMs = 0;
 let kekePoolGroup = {
     id: null,
     destination: null,
@@ -118,6 +120,25 @@ function addSwipeToDismiss(element, callback) {
         if (deltaY > 100) { callback(); touchStartY = 0; }
     }, { passive: true });
     element.addEventListener('touchend', function() { touchStartY = 0; });
+}
+
+function syncServerClock(serverTime) {
+    if (!serverTime) return;
+    const parsed = new Date(serverTime).getTime();
+    if (!Number.isNaN(parsed)) serverClockOffsetMs = parsed - Date.now();
+}
+
+function getSyncedNowMs() {
+    return Date.now() + serverClockOffsetMs;
+}
+
+function hideEndNavigationButton() {
+    const endNavBtn = document.getElementById('end-navigation-btn');
+    if (endNavBtn) endNavBtn.classList.remove('visible');
+}
+
+function getTrackerElementById(id) {
+    return document.querySelector(`#navigation-tracker #${id}`) || document.getElementById(id);
 }
 
 // ============================================
@@ -424,7 +445,7 @@ function startDirections(mode) {
     hideControls();
     createNavigationTracker();
     const endNavBtn = document.getElementById('end-navigation-btn');
-    if (endNavBtn) endNavBtn.classList.add('visible');
+    if (endNavBtn && !userSession.hasActiveReservation) endNavBtn.classList.add('visible');
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
 
     const startWatchingPosition = () => {
@@ -478,8 +499,10 @@ function createNavigationTracker() {
         borderRadius: isMobile ? '15px' : '10px',
         boxShadow: '0 4px 20px rgba(0,0,0,0.2)', backdropFilter: 'blur(10px)',
         border: '1px solid rgba(0,64,128,0.2)',
-        maxHeight: navTrackerCollapsed ? (isMobile?'70px':'60px') : (isMobile?'50vh':'400px'),
-        overflow: 'hidden', transition: 'all 0.3s ease',
+        maxHeight: navTrackerCollapsed ? (isMobile?'70px':'60px') : (isMobile?'65vh':'400px'),
+        overflowX: 'hidden', overflowY: navTrackerCollapsed ? 'hidden' : 'auto',
+        WebkitOverflowScrolling: 'touch',
+        transition: 'all 0.3s ease',
         pointerEvents: 'auto', fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     });
     const mobileHandle = isMobile && !navTrackerCollapsed ? `<div style="width:40px;height:5px;background:#ccc;border-radius:3px;margin:5px auto 10px;"></div>` : '';
@@ -558,17 +581,17 @@ function toggleVoice() {
 
 function updateTrackerWithRoute(routeResult) {
     const leg = routeResult.routes[0].legs[0];
-    const distanceEl = document.getElementById('tracker-distance');
-    const durationEl = document.getElementById('tracker-duration');
-    const miniDistanceEl = document.getElementById('mini-distance');
-    const miniDurationEl = document.getElementById('mini-duration');
+    const distanceEl = getTrackerElementById('tracker-distance');
+    const durationEl = getTrackerElementById('tracker-duration');
+    const miniDistanceEl = getTrackerElementById('mini-distance');
+    const miniDurationEl = getTrackerElementById('mini-duration');
     if (distanceEl) distanceEl.textContent = leg.distance.text;
     if (durationEl) durationEl.textContent = leg.duration.text;
     if (miniDistanceEl) miniDistanceEl.textContent = leg.distance.text;
     if (miniDurationEl) miniDurationEl.textContent = leg.duration.text;
     if (leg.steps.length > 0) {
         const instruction = leg.steps[0].instructions.replace(/<[^>]+>/g, '');
-        const instructionEl = document.getElementById('current-instruction');
+        const instructionEl = getTrackerElementById('current-instruction');
         if (instructionEl) instructionEl.innerHTML = `<i class="fas fa-play"></i> ${instruction}`;
     }
 }
@@ -612,7 +635,7 @@ function checkUserProgress() {
 
 function updateInstruction(manualInstruction = null) {
     if (!route && !manualInstruction) return;
-    const instructionEl = document.getElementById('current-instruction');
+    const instructionEl = getTrackerElementById('current-instruction');
     if (!instructionEl) return;
     if (manualInstruction) {
         instructionEl.innerHTML = `<i class="fas fa-check-circle"></i> ${manualInstruction}`;
@@ -628,7 +651,7 @@ function updateInstruction(manualInstruction = null) {
 }
 
 function updateNextTurnDistance(distance) {
-    const distanceElement = document.getElementById('next-turn-distance');
+    const distanceElement = getTrackerElementById('next-turn-distance');
     if (distanceElement) distanceElement.textContent = `${(distance * 1000).toFixed(0)} m`;
 }
 
@@ -1165,6 +1188,7 @@ function startReservationTracking(reservationId) {
     if (reservationTimer) clearInterval(reservationTimer);
     document.getElementById("mode-selector").classList.add("hidden");
     hideControls();
+    hideEndNavigationButton();
 
     const buildTrackingPanel = () => {
         const tricycle = selectedTricycle || userSession.vehicleDetails;
@@ -1456,9 +1480,11 @@ function joinKekePool(userName, location) {
     })
     .then(data => {
         if (loadingDiv) loadingDiv.style.display = 'none';
+        syncServerClock(data.serverTime);
         if (data.success) {
             currentPoolId = data.pool.id;
             kekePoolGroup = data.pool;
+            poolSyncState = data.pool.syncState || null;
             if (data.pool.riders && data.pool.riders.length > 0) {
                 const myRider = data.pool.riders[data.pool.riders.length - 1];
                 if (myRider && myRider.id) localStorage.setItem('riderId', myRider.id);
@@ -1517,8 +1543,82 @@ function handlePoolJoinFallback(riderId, userName, location) {
 // CALCULATE POOL ETA AND START RIDE
 // ============================================
 function calculatePoolETAAndStart() {
+    if (currentPoolId && !String(currentPoolId).startsWith('local_pool_')) {
+        fetch(`http://localhost:3000/api/kekepool/${currentPoolId}`)
+            .then(res => res.json())
+            .then(poolState => {
+                syncServerClock(poolState.serverTime);
+                kekePoolGroup = poolState;
+                const optimizedRoute = poolState.optimizedRoute;
+                const assignedVehicle = poolState.assignedVehicle || optimizedRoute?.vehicle || selectedTricycle;
+                if (!optimizedRoute || !assignedVehicle) {
+                    calculatePoolETAAndStartLocal();
+                    return;
+                }
+
+                const ridersBase = optimizedRoute.estimatedPickupOrder || poolState.riders || [];
+                const pickupPlan = (poolState.syncState && poolState.syncState.pickupPlan) ? poolState.syncState.pickupPlan : [];
+                const planById = new Map(pickupPlan.map(p => [p.riderId, p]));
+                const riders = ridersBase.map((rider, index) => {
+                    const plan = planById.get(rider.id) || pickupPlan[index] || {};
+                    return {
+                        ...rider,
+                        id: rider.id || plan.riderId,
+                        name: rider.name || rider.userName || plan.riderName || `Rider ${index + 1}`,
+                        pickupLat: rider.pickupLat ?? plan.pickupLat ?? rider.lat,
+                        pickupLng: rider.pickupLng ?? plan.pickupLng ?? rider.lng,
+                        eta: rider.eta ?? plan.legEtaMinutes ?? 1,
+                        cumulativeETA: rider.cumulativeETA ?? plan.cumulativeETA ?? (rider.eta ?? 1),
+                        pickupOrder: rider.pickupOrder ?? plan.pickupOrder ?? (index + 1),
+                        etaAt: plan.etaAt || null
+                    };
+                }).sort((a, b) => (a.pickupOrder || 0) - (b.pickupOrder || 0));
+
+                const totalTime = poolState.syncState?.totalTimeMinutes || optimizedRoute.totalTime || 0;
+                poolSyncState = poolState.syncState || null;
+                ridePhase = 'pool-ride';
+                if (kekePoolRefreshInterval) { clearInterval(kekePoolRefreshInterval); kekePoolRefreshInterval = null; }
+
+                poolRideData = {
+                    tricycle: assignedVehicle,
+                    riders,
+                    totalTime,
+                    destination: selectedDestination,
+                    syncState: poolSyncState
+                };
+
+                userSession.hasActiveReservation = true;
+                userSession.vehicleDetails = { driver: assignedVehicle.driver, phone: assignedVehicle.phone };
+                userSession.vehicleName = assignedVehicle.name;
+                userSession.vehicleId = assignedVehicle.id;
+
+                document.getElementById("mode-selector").classList.add("hidden");
+                const tricyclePanel = document.getElementById("tricycle-panel");
+                if (tricyclePanel) tricyclePanel.classList.add("hidden");
+                tricyclePanelVisible = false;
+                hideControls();
+                hideEndNavigationButton();
+
+                if (poolSyncState?.samePickupLocation && riders.length > 0) {
+                    handleGroupPickup(assignedVehicle, riders[0], poolSyncState);
+                } else {
+                    showPoolETASummaryAndStartSimulation();
+                }
+            })
+            .catch(error => {
+                console.error('Failed to load server pool sync state, using local fallback:', error);
+                calculatePoolETAAndStartLocal();
+            });
+        return;
+    }
+
+    calculatePoolETAAndStartLocal();
+}
+
+function calculatePoolETAAndStartLocal() {
     console.log('Pool is full — calculating ETAs and starting simulation');
     ridePhase = 'pool-ride';
+    poolSyncState = null;
     if (kekePoolRefreshInterval) { clearInterval(kekePoolRefreshInterval); kekePoolRefreshInterval = null; }
     const riders = kekePoolGroup.riders;
     if (!riders || riders.length === 0) { console.error('No riders in pool'); return; }
@@ -1595,7 +1695,7 @@ function calculatePoolETAAndStart() {
     const timeToDest = Math.max(1, Math.ceil((distanceToDest / (selectedTricycleForPool.speed || 15)) * 60));
     const totalTime = cumulativeTime + timeToDest;
 
-    poolRideData = { tricycle: selectedTricycleForPool, riders: ridersWithCumulativeETA, totalTime, destination: selectedDestination };
+    poolRideData = { tricycle: selectedTricycleForPool, riders: ridersWithCumulativeETA, totalTime, destination: selectedDestination, syncState: null };
 
     userSession.hasActiveReservation = true;
     userSession.vehicleDetails = { driver: selectedTricycleForPool.driver, phone: selectedTricycleForPool.phone };
@@ -1607,6 +1707,7 @@ function calculatePoolETAAndStart() {
     if (tricyclePanel) tricyclePanel.classList.add("hidden");
     tricyclePanelVisible = false;
     hideControls();
+    hideEndNavigationButton();
 
     showPoolETASummaryAndStartSimulation();
 }
@@ -1614,7 +1715,7 @@ function calculatePoolETAAndStart() {
 // ============================================
 // GROUP PICKUP (all riders at same location)
 // ============================================
-function handleGroupPickup(tricycle, sharedRider) {
+function handleGroupPickup(tricycle, sharedRider, syncState = null) {
     userSession.hasActiveReservation = true;
     userSession.vehicleDetails = { driver: tricycle.driver, phone: tricycle.phone };
     userSession.vehicleName = tricycle.name;
@@ -1625,6 +1726,7 @@ function handleGroupPickup(tricycle, sharedRider) {
     if (tricyclePanel) tricyclePanel.classList.add("hidden");
     tricyclePanelVisible = false;
     hideControls();
+    hideEndNavigationButton();
 
     // Calculate tricycle → shared pickup ETA
     const distToPickup = calculateHaversineDistance(
@@ -1632,6 +1734,10 @@ function handleGroupPickup(tricycle, sharedRider) {
         { lat: sharedRider.pickupLat, lng: sharedRider.pickupLng }
     );
     const etaToPickup = Math.max(1, Math.ceil((distToPickup / (tricycle.speed || 15)) * 60));
+    const sharedEtaAt = syncState?.pickupPlan?.[0]?.etaAt ? new Date(syncState.pickupPlan[0].etaAt).getTime() : null;
+    const initialDurationMinutes = sharedEtaAt
+        ? Math.max(1, Math.ceil((sharedEtaAt - getSyncedNowMs()) / 60000))
+        : etaToPickup;
 
     // Build tracking panel
     if (!document.getElementById('tracking-panel')) {
@@ -1655,7 +1761,7 @@ function handleGroupPickup(tricycle, sharedRider) {
             <div style="background:linear-gradient(135deg,#004080,#0066cc);color:white;padding:${isMobile?'18px':'14px'};border-radius:${isMobile?'15px':'10px'};margin-bottom:15px;text-align:center;">
                 <div style="font-size:${isMobile?'2em':'1.6em'};margin-bottom:6px;animation:bounce 1s infinite;">🛺</div>
                 <div style="font-weight:bold;font-size:${isMobile?'1.1em':'1em'};">${tricycle.name} is on the way!</div>
-                <div style="font-size:${isMobile?'2.2em':'1.8em'};font-weight:bold;margin:8px 0;" id="group-eta-display">${etaToPickup} min</div>
+                <div style="font-size:${isMobile?'2.2em':'1.8em'};font-weight:bold;margin:8px 0;" id="group-eta-display">${initialDurationMinutes} min</div>
                 <div style="font-size:${isMobile?'0.9em':'0.85em'};opacity:0.85;">Arriving to pick up all ${kekePoolGroup.riders.length} riders</div>
             </div>
             <!-- All riders chips -->
@@ -1698,10 +1804,12 @@ function handleGroupPickup(tricycle, sharedRider) {
     trackingPanel.style.display = 'block';
 
     // Countdown for group ETA display
-    let etaSeconds = etaToPickup * 60;
+    let etaSeconds = initialDurationMinutes * 60;
     if (reservationTimer) clearInterval(reservationTimer);
     reservationTimer = setInterval(() => {
-        etaSeconds = Math.max(0, etaSeconds - 1);
+        etaSeconds = sharedEtaAt
+            ? Math.max(0, Math.ceil((sharedEtaAt - getSyncedNowMs()) / 1000))
+            : Math.max(0, etaSeconds - 1);
         const el = document.getElementById('group-eta-display');
         if (el) {
             const m = Math.floor(etaSeconds / 60), s = etaSeconds % 60;
@@ -1714,7 +1822,7 @@ function handleGroupPickup(tricycle, sharedRider) {
     simulateTricycleRoute(
         { lat: tricycle.lat, lng: tricycle.lng },
         { lat: sharedRider.pickupLat, lng: sharedRider.pickupLng },
-        etaToPickup,
+        initialDurationMinutes,
         `Picking up all ${kekePoolGroup.riders.length} riders`,
         () => {
             // All riders at same spot — show "everyone aboard" popup then launch real nav
@@ -1788,8 +1896,7 @@ function startRealDrivingNavigation() {
 
     // Show the full blue turn-by-turn navigation tracker
     createNavigationTracker();
-    const endNavBtn = document.getElementById('end-navigation-btn');
-    if (endNavBtn) endNavBtn.classList.add('visible');
+    hideEndNavigationButton();
 
     // Start watching real GPS position for live progress tracking
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -1981,8 +2088,7 @@ function showPoolETASummaryAndStartSimulation() {
             </div>
         </div>`;
     trackingPanel.style.display = 'block';
-    const endNavBtn = document.getElementById('end-navigation-btn');
-    if (endNavBtn) endNavBtn.classList.add('visible');
+    hideEndNavigationButton();
 
     setTimeout(() => { startFirstPickup(); }, 2000);
 }
@@ -2281,6 +2387,7 @@ function startKekePoolTracking() {
     const tricyclePanel = document.getElementById("tricycle-panel");
     if (tricyclePanel) tricyclePanel.classList.add("hidden");
     tricyclePanelVisible = false;
+    hideEndNavigationButton();
     const findBtn = document.getElementById('find-tricycles-btn');
     if (findBtn) findBtn.innerHTML = '<i class="fas fa-shuttle-van"></i> Find Campus Tricycles';
     hideControls();
@@ -2320,7 +2427,9 @@ function startKekePoolTracking() {
             fetch(`http://localhost:3000/api/kekepool/${currentPoolId}`)
                 .then(res => res.json())
                 .then(data => {
+                    syncServerClock(data.serverTime);
                     kekePoolGroup = data;
+                    poolSyncState = data.syncState || poolSyncState;
                     displayKekePoolGroup();
                     if (data.riders && data.riders.length >= 4) calculatePoolETAAndStart();
                 })
