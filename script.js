@@ -2899,10 +2899,11 @@ function checkBackendConnection() {
 // CANCEL RESERVATION - COMPLETE RESET
 // ============================================
 function cancelReservationAndClear() {
-    if (ridePhase==='trip'||ridePhase==='pool-ride') {
-        alert("Cannot cancel reservation during an active ride. Please complete the ride first."); return;
-    }
-    if (confirm('Cancel your reservation? This will return you to the main screen.')) {
+    const inActiveRide = ridePhase==='trip'||ridePhase==='pool-ride';
+    const confirmMessage = inActiveRide
+        ? 'This ride is active. Force cancel and reset this device session? This will also try to release the vehicle.'
+        : 'Cancel your reservation? This will return you to the main screen.';
+    if (confirm(confirmMessage)) {
         if (currentPoolId) {
             const riderId = localStorage.getItem('riderId');
             fetch(`/api/kekepool/${currentPoolId}/leave`, {
@@ -2910,7 +2911,10 @@ function cancelReservationAndClear() {
             }).catch(error => console.error('Error leaving pool:', error));
         }
         if (userSession.vehicleId) {
-            fetch(`/api/vehicles/${userSession.vehicleId}/release`, { method:'POST', headers:{'Content-Type':'application/json'} })
+            const releaseEndpoint = inActiveRide
+                ? `/api/vehicles/${userSession.vehicleId}/complete-ride`
+                : `/api/vehicles/${userSession.vehicleId}/release`;
+            fetch(releaseEndpoint, { method:'POST', headers:{'Content-Type':'application/json'} })
                 .catch(error => console.error('Error:', error));
         }
         userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null };
@@ -2919,7 +2923,7 @@ function cancelReservationAndClear() {
         localStorage.removeItem('activeReservation'); localStorage.removeItem('riderId');
         clearPoolSession();
         clearAllDisplays();
-        alert('Reservation cancelled. Returning to main screen.');
+        alert(inActiveRide ? 'Ride session reset. Returning to main screen.' : 'Reservation cancelled. Returning to main screen.');
         document.getElementById("destination-input").value = "";
         selectedDestination = null;
         // showControls() is already called inside clearAllDisplays()
