@@ -75,6 +75,9 @@ window.fetch = (input, init) => {
     if (typeof input === 'string' && input.startsWith('/api/')) {
         return nativeFetch(`${API_BASE_URL}${input}`, init);
     }
+    if (input instanceof Request && input.url.startsWith('/api/')) {
+        return nativeFetch(new Request(`${API_BASE_URL}${input.url}`, input), init);
+    }
     return nativeFetch(input, init);
 };
 
@@ -772,7 +775,15 @@ async function loadAvailableTricycles() {
         let url = '/api/vehicles/available';
         if (userLocation) url = `/api/vehicles/nearby?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=2`;
         const response = await fetch(url);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
         const tricycles = await response.json();
+        if (!Array.isArray(tricycles)) {
+            console.error('Unexpected tricycles payload:', tricycles);
+            throw new Error(tricycles?.error || 'Unexpected API response format');
+        }
         displayTricycles(tricycles);
         showTricycleMarkers(tricycles);
     } catch (error) {
@@ -781,6 +792,7 @@ async function loadAvailableTricycles() {
             <div style="text-align:center;padding:${isMobile?'40px':'30px'};">
                 <p><i class="fas fa-exclamation-triangle" style="font-size:${isMobile?'48px':'36px'};color:#dc3545;"></i></p>
                 <p>Unable to load tricycles.</p>
+                <p style="font-size:0.85em;color:#666;word-break:break-word;margin-top:8px;">${error.message || 'Unknown error'}</p>
                 <button onclick="loadAvailableTricycles()" style="margin-top:20px;padding:${isMobile?'14px 30px':'10px 20px'};background:#004080;color:white;border:none;border-radius:${isMobile?'10px':'5px'};">Retry</button>
             </div>`;
     }
