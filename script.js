@@ -68,6 +68,16 @@ let userSession = {
     pickupETA: null
 };
 
+// Route API calls directly to Railway to avoid Vercel rewrite issues.
+const API_BASE_URL = 'https://modest-luck-production-fbd9.up.railway.app';
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+    if (typeof input === 'string' && input.startsWith('/api/')) {
+        return nativeFetch(`${API_BASE_URL}${input}`, init);
+    }
+    return nativeFetch(input, init);
+};
+
 // ============== MOBILE DETECTION ==============
 function detectMobile() {
     isMobile = window.innerWidth <= 768 ||
