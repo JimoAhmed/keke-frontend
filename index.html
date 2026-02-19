@@ -2,37 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Babcock Campus Navigator - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="index.css">
-  <script src="https://kit.fontawesome.com/c010796446.js" crossorigin="anonymous"></script>
-  <link rel="icon" type="image/jpeg" href="images/bu.jpg">
-
+  <title>Babcock Campus Navigator</title>
+  <link rel="icon" type="image/jpeg" href="images/bu.jpg" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link rel="stylesheet" href="index.css" />
 </head>
 <body>
-
-
   <nav class="navbar navbar-expand-lg">
     <div class="container">
-      <a class="navbar-brand" href="#">
-        <img src="../images/bu1.jpg" alt="Babcock University" width="130" height="40">
+      <a class="navbar-brand text-white fw-bold" href="#">
+        Babcock Navigator
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <a class="nav-link text-white" href="#hotspots">Hotspots</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link text-white" href="#features">Features</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link text-white" href="navigator.html">Full Navigator</a>
-          </li>
+          <li class="nav-item"><a class="nav-link text-white" href="#hotspots">Hotspots</a></li>
+          <li class="nav-item"><a class="nav-link text-white" href="#features">Features</a></li>
+          <li class="nav-item"><a class="nav-link text-white" href="navigator.html">Open Navigator</a></li>
         </ul>
       </div>
     </div>
@@ -40,177 +30,108 @@
 
   <section class="hero-section">
     <div class="container">
-      <h1>Babcock Campus Navigator</h1>
-      <p>Find your way around campus with real-time navigation guidance. Get instant directions to classrooms, hostels, offices, and more.</p>
-      <button class="btn btn-primary" onclick="goToFullNavigator()">
-        <i class="fas fa-map-marked-alt me-2"></i>Launch Full Navigator
-      </button>
+      <h1>Campus Navigation + Tricycle Booking</h1>
+      <p>Get campus directions, book a tricycle, track pickup in real time, and ride in solo or Keke-Pool mode.</p>
+      <div class="d-flex flex-column flex-md-row gap-3 justify-content-center">
+        <button class="btn btn-primary" onclick="goToFullNavigator()">
+          <i class="fas fa-map-marked-alt me-2"></i>Open Full Navigator
+        </button>
+        <button class="btn btn-primary" onclick="goToFullNavigator()">
+          <i class="fas fa-shuttle-van me-2"></i>Book Tricycle Ride
+        </button>
+      </div>
     </div>
   </section>
 
-
-  <section id="hotspots" class="container">
+  <section id="hotspots" class="container mb-5">
     <h2 class="section-title">Popular Campus Locations</h2>
-    
     <div class="row g-4">
-
-     <div class="col-md-4">
-  <div class="card hotspot-card">
-    <img src="images/bbs.jpg" class="card-img-top" alt="Recreation Center" height="300">
-    <div class="card-body">
+      <div class="col-md-4">
+        <div class="card hotspot-card">
+          <img src="images/bbs.jpg" class="card-img-top" alt="Academic Buildings" height="260">
+          <div class="card-body">
             <h5 class="card-title">Academic Buildings</h5>
-            <p class="card-text">Find your lecture halls, laboratories, and faculty buildings across campus.</p>
+            <p class="card-text">Lecture halls, laboratories, and faculty blocks.</p>
             <button class="btn btn-navigate" onclick="goToNavigator('Academic Buildings')">
               <i class="fas fa-directions me-2"></i>Navigate Now
             </button>
           </div>
         </div>
       </div>
-      
-
-         <div class="col-md-4">
-  <div class="card hotspot-card">
-    <img src="images/topaz.jpeg" class="card-img-top" alt="Recreation Center" height="300">
-    <div class="card-body">
+      <div class="col-md-4">
+        <div class="card hotspot-card">
+          <img src="images/topaz.jpeg" class="card-img-top" alt="Hostels" height="260">
+          <div class="card-body">
             <h5 class="card-title">Hostels</h5>
-            <p class="card-text">Navigate to male and female hostels with direct routing.</p>
+            <p class="card-text">Navigate to male and female hostels quickly.</p>
             <button class="btn btn-navigate" onclick="goToNavigator('Hostels')">
               <i class="fas fa-directions me-2"></i>Navigate Now
             </button>
           </div>
         </div>
       </div>
-      
-
- <div class="col-md-4">
-  <div class="card hotspot-card">
-    <img src="images/pioneer.jpg" class="card-img-top" alt="Recreation Center" height="300">
-    <div class="card-body">
-            <h5 class="card-title">Administrative Block</h5>
-            <p class="card-text">Find the main admin offices, registry, and administrative services.</p>
-            <button class="btn btn-navigate" onclick="goToNavigator('Administrative Block')">
-              <i class="fas fa-directions me-2"></i>Navigate Now
-            </button>
-          </div>
-        </div>
-      </div>
-      
-
-        <div class="col-md-4">
-  <div class="card hotspot-card">
-    <img src="images/caf.jpg" class="card-img-top" alt="Recreation Center" height="300">
-    <div class="card-body">
+      <div class="col-md-4">
+        <div class="card hotspot-card">
+          <img src="images/caf.jpg" class="card-img-top" alt="Cafeteria" height="260">
+          <div class="card-body">
             <h5 class="card-title">Cafeteria & Dining</h5>
-            <p class="card-text">Locate food courts, cafeterias, and dining halls across campus.</p>
+            <p class="card-text">Find food courts and dining halls around campus.</p>
             <button class="btn btn-navigate" onclick="goToNavigator('Cafeteria')">
               <i class="fas fa-directions me-2"></i>Navigate Now
             </button>
           </div>
         </div>
       </div>
-      
-
-    <div class="col-md-4">
-  <div class="card hotspot-card">
-    <img src="images/gate.png" class="card-img-top" alt="Recreation Center" height="300">
-    <div class="card-body">
-            <h5 class="card-title">Campus Gates</h5>
-            <p class="card-text">Find main entrances, exits, and campus gate locations.</p>
-            <button class="btn btn-navigate" onclick="goToNavigator('Gates')">
-              <i class="fas fa-directions me-2"></i>Navigate Now
-            </button>
-          </div>
-        </div>
-      </div>
-      
-
- <div class="col-md-4">
-  <div class="card hotspot-card">
-    <img src="images/bgh.jpg" class="card-img-top" alt="Recreation Center" height="300">
-    <div class="card-body">
-      <h5 class="card-title">Recreation Centers</h5>
-      <p class="card-text">Locate sports facilities, gyms, and recreational areas.</p>
-      <button class="btn btn-navigate" onclick="goToNavigator('Recreation Centres')">
-        <i class="fas fa-directions me-2"></i>Navigate Now
-      </button>
-    </div>
-  </div>
-</div>
-
     </div>
   </section>
-
 
   <section id="features" class="features-section">
     <div class="container">
-      <h2 class="section-title">Why Use Our Navigator?</h2>
+      <h2 class="section-title">What You Can Do</h2>
       <div class="row text-center">
         <div class="col-md-4 mb-4">
-          <div class="feature-icon">
-            <i class="fas fa-map-marker-alt"></i>
-          </div>
-          <h4>Real-Time Tracking</h4>
-          <p>Get live updates on your position and route as you move around campus.</p>
+          <div class="feature-icon"><i class="fas fa-route"></i></div>
+          <h4>Turn-By-Turn Navigation</h4>
+          <p>Live route guidance to destinations across Babcock campus.</p>
         </div>
         <div class="col-md-4 mb-4">
-          <div class="feature-icon">
-            <i class="fas fa-route"></i>
-          </div>
-          <h4>Optimal Routes</h4>
-          <p>Find the shortest and most efficient paths to your destination.</p>
+          <div class="feature-icon"><i class="fas fa-shuttle-van"></i></div>
+          <h4>Tricycle Reservation</h4>
+          <p>Reserve available tricycles, track ETA, and view driver details.</p>
         </div>
         <div class="col-md-4 mb-4">
-          <div class="feature-icon">
-            <i class="fas fa-mobile-alt"></i>
-          </div>
-          <h4>Mobile Friendly</h4>
-          <p>Works perfectly on all devices - smartphones, tablets, and computers.</p>
+          <div class="feature-icon"><i class="fas fa-users"></i></div>
+          <h4>Keke-Pool</h4>
+          <p>Join shared rides to the same destination and pay reduced fare.</p>
         </div>
       </div>
-      <div class="col-md-4 mb-4">
-  <div class="feature-icon">
-    <i class="fas fa-shuttle-van"></i>
-  </div>
-  <h4>Campus Tricycle Service</h4>
-  <p>Find and reserve campus tricycles with real-time tracking, distance, ETA, and battery status.</p>
-</div>
     </div>
   </section>
 
-
   <footer class="text-center">
     <div class="container">
-      <p>&copy; 2025 Babcock University Campus Navigation System.</p>
-       <p> All rights reserved.</p>
-      <p>Finding your way around just got easier.</p>
+      <p class="mb-1">&copy; 2026 Babcock Campus Navigator</p>
+      <p class="mb-0">Navigation and Tricycle Booking System</p>
     </div>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  
   <script>
-    // Function to go to navigator with pre-selected category
     function goToNavigator(category) {
-      // Store the selected category in localStorage
       localStorage.setItem('selectedCategory', category);
-      // Redirect to navigator
       window.location.href = 'navigator.html';
     }
 
-    // Function to go to the full navigation system without pre-selection
     function goToFullNavigator() {
-      // Clear any previous selection
       localStorage.removeItem('selectedCategory');
       window.location.href = 'navigator.html';
     }
-    
-    // Smooth scrolling for anchor links
+
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       anchor.addEventListener('click', function (e) {
         e.preventDefault();
-        document.querySelector(this.getAttribute('href')).scrollIntoView({
-          behavior: 'smooth'
-        });
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
       });
     });
   </script>
