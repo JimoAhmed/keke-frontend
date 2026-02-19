@@ -1395,6 +1395,10 @@ function hideTrackingPanel() {
 // ============================================
 
 function setKekePoolMode(mode) {
+    // Hard lock: if this tricycle is pool-only, never allow solo selection.
+    if (mode === 'solo' && selectedTricycle && selectedTricycle.reservedForPool === true) {
+        mode = 'pool';
+    }
     kekePoolMode = mode;
     const soloOption = document.getElementById('keke-pool-solo');
     const poolOption = document.getElementById('keke-pool-pool');
@@ -2483,8 +2487,9 @@ function showETABooking(tricycleId, forcePoolMode = false) {
             const maxCapacity = tricycle.maxCapacity || 4;
             if (passengerCount >= maxCapacity) { alert(`This tricycle is full! Maximum ${maxCapacity} passengers.\n\nCurrent: ${passengerCount}/${maxCapacity}`); return; }
             if (tricycle.reservedForPool === true && !forcePoolMode) {
-                alert(`This tricycle has Keke-Pool riders.\n\nTap "Join Pool" to join the existing pool, or select a different tricycle for solo booking.`);
-                return;
+                // Auto-switch to pool-only booking instead of allowing solo.
+                forcePoolMode = true;
+                alert(`This tricycle already has Keke-Pool riders.\n\nSolo booking is disabled for this vehicle. You can only join the pool.`);
             }
             if (userSession.hasActiveReservation) { alert(`You already have an active reservation.\n\nPlease complete or cancel your current ride first.`); return; }
             selectedTricycle = tricycle;
@@ -2527,6 +2532,7 @@ function buildRideTypeToggle(poolOnly) {
 
 function createETAModal(tricycle, passengerCount, maxCapacity, distanceText, etaText, forcePoolMode = false) {
     detectMobile();
+    const poolOnlyMode = forcePoolMode || tricycle.reservedForPool === true;
     const modalHTML = `
         <div id="etaModal" style="display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;-webkit-overflow-scrolling:touch;">
             <div style="position:absolute;top:${isMobile?'30px':'50%'};left:50%;transform:translate(-50%,${isMobile?'0':'-50%'});background:white;padding:${isMobile?'25px 20px':'25px'};border-radius:${isMobile?'25px':'15px'};max-width:${isMobile?'95%':'500px'};width:${isMobile?'95%':'90%'};max-height:${isMobile?'85vh':'80vh'};overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2);">
@@ -2551,7 +2557,7 @@ function createETAModal(tricycle, passengerCount, maxCapacity, distanceText, eta
                         </div>
                     </div>
                 </div>
-                ${buildRideTypeToggle(forcePoolMode)}
+                ${buildRideTypeToggle(poolOnlyMode)}
                 <div id="keke-pool-waiting" style="display:none;"></div>
                 <div id="etaForm">
                     <div style="margin-bottom:20px;">
@@ -2592,7 +2598,7 @@ function createETAModal(tricycle, passengerCount, maxCapacity, distanceText, eta
     const modalContainer = document.createElement('div');
     modalContainer.innerHTML = modalHTML;
     document.body.appendChild(modalContainer);
-    if (forcePoolMode) {
+    if (poolOnlyMode) {
         setKekePoolMode('pool');
         const soloBtn = document.getElementById('keke-pool-solo');
         if (soloBtn) soloBtn.style.display = 'none';
