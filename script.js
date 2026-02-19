@@ -10,6 +10,7 @@ let currentStepIndex = 0;
 let userMarker = null;
 let voiceEnabled = true;
 let navTrackerCollapsed = false;
+let rideCompletionPopupShown = false;
 
 // ============== MOBILE RESPONSIVENESS ==============
 let isMobile = false;
@@ -746,6 +747,7 @@ function createNavigationTracker() {
     `;
     document.body.appendChild(tracker);
     if (isMobile) addSwipeToDismiss(tracker, function() { if (!navTrackerCollapsed) toggleNavTracker(); });
+    syncTrackerFromCurrentRoute();
 }
 
 function getTravelModeIcon() {
@@ -758,7 +760,37 @@ function getTravelModeIcon() {
     }
 }
 
-function toggleNavTracker() { navTrackerCollapsed = !navTrackerCollapsed; createNavigationTracker(); }
+function syncTrackerFromCurrentRoute() {
+    if (!route) return;
+    const leg = route.routes?.[0]?.legs?.[0];
+    if (!leg) return;
+
+    const distanceEl = getTrackerElementById('tracker-distance');
+    const durationEl = getTrackerElementById('tracker-duration');
+    const miniDistanceEl = getTrackerElementById('mini-distance');
+    const miniDurationEl = getTrackerElementById('mini-duration');
+    if (distanceEl) distanceEl.textContent = leg.distance.text;
+    if (durationEl) durationEl.textContent = leg.duration.text;
+    if (miniDistanceEl) miniDistanceEl.textContent = leg.distance.text;
+    if (miniDurationEl) miniDurationEl.textContent = leg.duration.text;
+
+    const instructionEl = getTrackerElementById('current-instruction');
+    if (!instructionEl) return;
+    if (currentStepIndex >= leg.steps.length) {
+        instructionEl.innerHTML = '<i class="fas fa-check-circle"></i> Arrived at destination!';
+        return;
+    }
+    const step = leg.steps[currentStepIndex];
+    const instructionText = step.instructions.replace(/<[^>]+>/g, '');
+    const distanceText = step.distance.text;
+    instructionEl.innerHTML = `<i class="fas fa-arrow-right"></i> ${instructionText} <span style="color:#666;font-size:${isMobile?'0.85em':'0.8em'};">(${distanceText})</span>`;
+}
+
+function toggleNavTracker() {
+    navTrackerCollapsed = !navTrackerCollapsed;
+    createNavigationTracker();
+    syncTrackerFromCurrentRoute();
+}
 
 function toggleVoice() {
     voiceEnabled = !voiceEnabled;
@@ -798,6 +830,16 @@ function checkUserProgress() {
     const progressPercent = (traveledDistance / totalDistance) * 100;
     const progressBar = document.getElementById('progress-bar');
     if (progressBar) progressBar.style.width = Math.min(progressPercent, 100) + '%';
+    const destination = leg.end_location;
+    const distanceToDestinationKm = haversineDistance(userLocation, {
+        lat: destination.lat(),
+        lng: destination.lng()
+    });
+    if ((ridePhase==='trip'||ridePhase==='pool-ride') && distanceToDestinationKm <= 0.05) {
+        updateInstruction("✅ Arrived at destination!");
+        showRideCompletedPopup();
+        return;
+    }
     if (currentStepIndex >= leg.steps.length) {
         updateInstruction("âœ… Arrived at destination!");
         if (ridePhase==='trip'||ridePhase==='pool-ride') showRideCompletedPopup();
@@ -862,6 +904,7 @@ function endNavigation() {
     }
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     route = null; currentStepIndex = 0; selectedDestination = null; travelMode = null; navTrackerCollapsed = false;
+    rideCompletionPopupShown = false;
     directionsRenderer.setDirections({ routes: [] });
     const tracker = document.getElementById('navigation-tracker');
     if (tracker) tracker.remove();
@@ -1265,6 +1308,7 @@ function startTricycleRide() {
     }
 
     ridePhase = 'trip';
+    rideCompletionPopupShown = false;
     hideControls();
     hideEndNavigationButton();
 
@@ -1283,6 +1327,8 @@ function startTricycleRide() {
 }
 
 function showRideCompletedPopup() {
+    if (rideCompletionPopupShown) return;
+    rideCompletionPopupShown = true;
     const isPoolRide = ridePhase === 'pool-ride';
     const fareAmount = isPoolRide ? '₦200' : '₦800';
     const fareNote = isPoolRide ? 'Please pay your driver ₦200 each' : 'Please pay your driver ₦800';
@@ -2169,6 +2215,7 @@ function showGroupAllAboardPopup(tricycle, onStart) {
 function startRealDrivingNavigation() {
     console.log('All riders aboard â€” starting real Google Maps driving navigation');
     ridePhase = 'pool-ride';
+    rideCompletionPopupShown = false;
 
     // Hide tracking panel; navigation tracker will take over
     const trackingPanel = document.getElementById('tracking-panel');
@@ -3166,6 +3213,7 @@ function clearAllDisplays() {
     document.getElementById("mode-selector").classList.add("hidden");
     if (showPanelBtn) showPanelBtn.style.display = 'none';
     route = null; currentStepIndex = 0; travelMode = null; navTrackerCollapsed = false;
+    rideCompletionPopupShown = false;
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     if (map && userLocation) { map.setCenter(userLocation); map.setZoom(isMobile?16:17); }
     showControls();
