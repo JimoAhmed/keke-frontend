@@ -69,6 +69,7 @@ let userSession = {
 };
 
 const POOL_SESSION_KEY = 'activePoolSession';
+const RIDE_RESUME_KEY = 'rideResumeState';
 
 // Route API calls directly to Railway to avoid Vercel rewrite issues.
 const API_BASE_URL = 'https://modest-luck-production-fbd9.up.railway.app';
@@ -109,7 +110,7 @@ function getResponsivePanelPosition(panelType = 'tracker') {
     if (isMobile) {
         switch(panelType) {
             case 'tracker': return { position:'fixed', bottom:'10px', left:'10px', right:'10px', width:'auto', maxWidth:'calc(100% - 20px)' };
-            case 'tracking': return { position:'fixed', bottom:'0', left:'0', right:'0', width:'100%', maxWidth:'100%', borderRadius:'20px 20px 0 0', maxHeight:'70vh' };
+            case 'tracking': return { position:'fixed', bottom:'0', left:'0', right:'0', width:'100%', maxWidth:'100%', borderRadius:'20px 20px 0 0', maxHeight:'85vh', overflowY:'auto', WebkitOverflowScrolling:'touch' };
             case 'button': return { position:'fixed', bottom:'20px', right:'20px', padding:'14px 20px', fontSize:'16px' };
             case 'tricycle-panel': return { position:'fixed', bottom:'0', left:'0', right:'0', width:'100%', maxWidth:'100%', borderRadius:'20px 20px 0 0', maxHeight:'70vh', zIndex:'2000' };
             default: return {};
@@ -117,7 +118,7 @@ function getResponsivePanelPosition(panelType = 'tracker') {
     } else {
         switch(panelType) {
             case 'tracker': return { position:'fixed', bottom:'20px', left:'20px', width: navTrackerCollapsed ? '280px' : '300px' };
-            case 'tracking': return { position:'fixed', bottom:'20px', right:'20px', width:'320px', borderRadius:'10px' };
+            case 'tracking': return { position:'fixed', bottom:'20px', right:'20px', width:'320px', borderRadius:'10px', maxHeight:'80vh', overflowY:'auto' };
             case 'button': return { position:'fixed', bottom:'20px', right:'20px', padding:'10px 15px', fontSize:'0.9em' };
             case 'tricycle-panel': return { position:'fixed', top:'80px', right:'20px', width:'320px', maxWidth:'90%', borderRadius:'10px' };
             default: return {};
@@ -169,25 +170,162 @@ function checkPreSelectedCategory() {
     }
 }
 
-function checkExistingReservation() {
-    // Session persistence intentionally disabled:
-    // refreshing the page should not restore active rides.
+function getSelectedDestinationSnapshot() {
+    if (!selectedDestination) return null;
+    return {
+        name: selectedDestination.name,
+        lat: selectedDestination.lat,
+        lng: selectedDestination.lng
+    };
+}
+
+function saveRideResumeState(state) {
+    if (!state) return;
+    try {
+        localStorage.setItem(RIDE_RESUME_KEY, JSON.stringify({
+            ...state,
+            destination: state.destination || getSelectedDestinationSnapshot(),
+            updatedAt: Date.now()
+        }));
+    } catch (error) {
+        console.warn('Could not save resume state:', error);
+    }
+}
+
+function getRideResumeState() {
+    try {
+        const raw = localStorage.getItem(RIDE_RESUME_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+        console.warn('Could not parse resume state:', error);
+        return null;
+    }
+}
+
+function clearRideResumeState() {
+    localStorage.removeItem(RIDE_RESUME_KEY);
     localStorage.removeItem('activeReservation');
-    localStorage.removeItem(POOL_SESSION_KEY);
-    localStorage.removeItem('riderId');
-    ridePhase = 'none';
+}
+
+async function restoreSoloRide(resumeState) {
+    if (!resumeState?.vehicleId) {
+        clearRideResumeState();
+        return;
+    }
+
+    const response = await fetch(`/api/vehicles/${resumeState.vehicleId}`);
+    if (!response.ok) throw new Error(`Vehicle lookup failed (${response.status})`);
+    const vehicle = await response.json();
+
+    if (vehicle.isAvailable === true) {
+        alert('Previous ride is no longer active.');
+        clearRideResumeState();
+        return;
+    }
+
+    selectedTricycle = vehicle;
+    currentReservationId = resumeState.reservationId || `resume_${vehicle.id}`;
+    selectedDestination = resumeState.destination || selectedDestination;
+    userSession = {
+        hasActiveReservation: true,
+        currentReservationId,
+        reservationExpiry: null,
+        vehicleId: vehicle.id,
+        vehicleName: vehicle.name || `Tricycle ${vehicle.id}`,
+        vehicleDetails: {
+            ...vehicle,
+            driver: vehicle.driver || 'John Okafor',
+            phone: vehicle.phone || '+234 803 123 4567'
+        },
+        passengerCount: vehicle.passengerCount || 1,
+        pickupETA: Number(resumeState.pickupETA) || 5
+    };
+    ridePhase = 'pickup';
+    startReservationTracking(currentReservationId);
+    saveRideResumeState({
+        mode: 'solo',
+        vehicleId: vehicle.id,
+        reservationId: currentReservationId,
+        pickupETA: userSession.pickupETA,
+        destination: getSelectedDestinationSnapshot()
+    });
+}
+
+async function restorePoolRide(resumeState) {
+    if (!resumeState?.poolId) {
+        clearPoolSession();
+        return;
+    }
+
+    if (resumeState.riderId) localStorage.setItem('riderId', resumeState.riderId);
+
+    const response = await fetch(`/api/kekepool/${resumeState.poolId}`);
+    if (!response.ok) throw new Error(`Pool lookup failed (${response.status})`);
+    const poolState = await response.json();
+
+    if (!poolState || !Array.isArray(poolState.riders) || poolState.riders.length === 0) {
+        alert('Previous pool ride is no longer active.');
+        clearPoolSession();
+        clearRideResumeState();
+        return;
+    }
+
+    currentPoolId = poolState.id || resumeState.poolId;
+    kekePoolGroup = poolState;
+    poolSyncState = poolState.syncState || null;
+    selectedDestination = resumeState.destination || poolState.destination || selectedDestination;
+    if (poolState.assignedVehicle) selectedTricycle = poolState.assignedVehicle;
+    ridePhase = (poolState.riders.length >= 4 || poolState.status === 'ready') ? 'pool-ride' : 'pool-waiting';
+
+    persistPoolSession();
+
+    if (ridePhase === 'pool-waiting') startKekePoolTracking();
+    else calculatePoolETAAndStart();
+}
+
+async function checkExistingReservation() {
+    const resumeState = getRideResumeState();
+    if (!resumeState) return;
+
+    const shouldResume = confirm('We found an unfinished ride on this device. Resume tracking?');
+    if (!shouldResume) {
+        clearRideResumeState();
+        clearPoolSession();
+        localStorage.removeItem('riderId');
+        return;
+    }
+
+    try {
+        if (resumeState.mode === 'pool') await restorePoolRide(resumeState);
+        else await restoreSoloRide(resumeState);
+    } catch (error) {
+        console.error('Unable to resume ride:', error);
+        clearRideResumeState();
+        clearPoolSession();
+        alert('Could not restore previous ride. Please book again.');
+    }
 }
 
 async function reconcilePersistedSessionWithBackend() {
-    // Session persistence intentionally disabled.
+    await checkExistingReservation();
 }
 
 function persistPoolSession() {
-    // Session persistence intentionally disabled.
+    const poolState = {
+        mode: 'pool',
+        poolId: currentPoolId || kekePoolGroup?.id || null,
+        riderId: localStorage.getItem('riderId') || null,
+        phase: ridePhase,
+        vehicleId: userSession.vehicleId || selectedTricycle?.id || null,
+        destination: getSelectedDestinationSnapshot()
+    };
+    localStorage.setItem(POOL_SESSION_KEY, JSON.stringify(poolState));
+    saveRideResumeState(poolState);
 }
 
 function clearPoolSession() {
     localStorage.removeItem(POOL_SESSION_KEY);
+    clearRideResumeState();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1215,9 +1353,17 @@ function createShowPanelButton() {
 
 function startReservationTracking(reservationId) {
     if (reservationTimer) clearInterval(reservationTimer);
+    if (ridePhase === 'none') ridePhase = 'pickup';
     document.getElementById("mode-selector").classList.add("hidden");
     hideControls();
     hideEndNavigationButton();
+    saveRideResumeState({
+        mode: 'solo',
+        reservationId: userSession.currentReservationId || reservationId,
+        vehicleId: userSession.vehicleId || selectedTricycle?.id || null,
+        pickupETA: userSession.pickupETA || 5,
+        destination: getSelectedDestinationSnapshot()
+    });
 
     const buildTrackingPanel = () => {
         const tricycle = selectedTricycle || userSession.vehicleDetails;
@@ -2777,6 +2923,13 @@ async function confirmReservation(tricycleId, userName) {
                 passengerCount: result.passengerCount || 1,
                 pickupETA: currentETA?.pickupETA || 5
             };
+            saveRideResumeState({
+                mode: 'solo',
+                reservationId: result.reservationId,
+                vehicleId: tricycleId,
+                pickupETA: userSession.pickupETA,
+                destination: getSelectedDestinationSnapshot()
+            });
             showReservationSuccess(result, userName);
             setTimeout(() => { closeETAModal(); startReservationTracking(currentReservationId); }, 3000);
         } else {
@@ -2852,8 +3005,9 @@ function cancelReservationAndClear() {
         userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null };
         ridePhase = 'none'; kekePoolMode = 'solo'; currentPoolId = null; poolRideData = null; currentPickupIndex = 0;
         kekePoolGroup = { id:null, destination:null, riders:[], maxRiders:4, createdAt:null };
-        localStorage.removeItem('activeReservation'); localStorage.removeItem('riderId');
+        localStorage.removeItem('riderId');
         clearPoolSession();
+        clearRideResumeState();
         clearAllDisplays();
         alert(inActiveRide ? 'Ride session reset. Returning to main screen.' : 'Reservation cancelled. Returning to main screen.');
         document.getElementById("destination-input").value = "";
@@ -2900,8 +3054,8 @@ function completeRide() {
                     if (response.ok) {
                         userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null };
                         ridePhase = 'none';
-                        localStorage.removeItem('activeReservation');
                         clearPoolSession();
+                        clearRideResumeState();
                         clearAllDisplays();
                         alert('Ride completed successfully. Thank you!');
                         loadAvailableTricycles();

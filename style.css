@@ -628,7 +628,9 @@ body, html {
   background: white;
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 80vh;
   border: 1px solid rgba(255,255,255,0.2);
 }
 
@@ -1164,7 +1166,8 @@ body, html {
     right: 0;
     width: 100%;
     border-radius: 25px 25px 0 0;
-    max-height: 70vh;
+    max-height: 85vh;
+    overflow-y: auto;
   }
   
   /* ===== SHOW TRACKING PANEL BUTTON ===== */
