@@ -2325,7 +2325,7 @@ function startRealDrivingNavigation() {
 
             // Update tracker header to show "Pool Ride" context
             const trackerHeader = document.querySelector('#navigation-tracker h3');
-            if (trackerHeader) trackerHeader.textContent = 'ðŸ›º Pool Ride â€” Navigation Active';
+            if (trackerHeader) trackerHeader.textContent = ' Pool Ride” Navigation Active';
 
             // Show a brief toast confirming real nav started
             showNavStartToast(dest.name);
