@@ -86,6 +86,16 @@ window.fetch = (input, init) => {
     return nativeFetch(input, init);
 };
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 // ============== MOBILE DETECTION ==============
 function detectMobile() {
     isMobile = window.innerWidth <= 768 ||
@@ -929,14 +939,31 @@ async function loadAvailableTricycles() {
             return;
         }
         tricycleList.innerHTML = `<p style="text-align:center;padding:40px;font-size:${isMobile?'1.2em':'1em'};">Loading tricycles...</p>`;
-        let url = '/api/vehicles/available';
-        if (userLocation) url = `/api/vehicles/nearby?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=2`;
-        const response = await fetch(url);
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        const nearbyUrl = userLocation
+            ? `/api/vehicles/nearby?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=2`
+            : null;
+        let tricycles = null;
+
+        if (nearbyUrl) {
+            try {
+                const nearbyResponse = await fetchWithTimeout(nearbyUrl, {}, 8000);
+                if (!nearbyResponse.ok) throw new Error(`Nearby HTTP ${nearbyResponse.status}`);
+                const nearbyData = await nearbyResponse.json();
+                if (Array.isArray(nearbyData)) tricycles = nearbyData;
+            } catch (nearbyError) {
+                console.warn('Nearby tricycle fetch failed, falling back to /available:', nearbyError);
+            }
         }
-        const tricycles = await response.json();
+
+        if (!Array.isArray(tricycles)) {
+            const response = await fetchWithTimeout('/api/vehicles/available', {}, 8000);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+            tricycles = await response.json();
+        }
+
         if (!Array.isArray(tricycles)) {
             console.error('Unexpected tricycles payload:', tricycles);
             throw new Error(tricycles?.error || 'Unexpected API response format');
