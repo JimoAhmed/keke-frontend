@@ -68,6 +68,8 @@ let userSession = {
     pickupETA: null
 };
 
+const POOL_SESSION_KEY = 'activePoolSession';
+
 // Route API calls directly to Railway to avoid Vercel rewrite issues.
 const API_BASE_URL = 'https://modest-luck-production-fbd9.up.railway.app';
 const nativeFetch = window.fetch.bind(window);
@@ -172,16 +174,58 @@ function checkExistingReservation() {
     if (savedReservation) {
         const reservation = JSON.parse(savedReservation);
         const now = new Date();
-        const expiry = new Date(reservation.expiry);
+        const expiry = new Date(reservation.reservationExpiry || reservation.expiry);
         if (now < expiry) {
             userSession = reservation;
-            ridePhase = 'pickup';
+            ridePhase = reservation.ridePhase || 'pickup';
             setTimeout(() => { startReservationTracking(reservation.currentReservationId); }, 1500);
         } else {
             localStorage.removeItem('activeReservation');
             ridePhase = 'none';
         }
     }
+
+    const savedPool = localStorage.getItem(POOL_SESSION_KEY);
+    if (!savedPool || userSession.hasActiveReservation) return;
+    try {
+        const pool = JSON.parse(savedPool);
+        // Keep a short persistence window for pool sessions.
+        const ageMs = Date.now() - new Date(pool.savedAt).getTime();
+        if (!Number.isNaN(ageMs) && ageMs > 30 * 60 * 1000) {
+            localStorage.removeItem(POOL_SESSION_KEY);
+            return;
+        }
+        currentPoolId = pool.currentPoolId || null;
+        kekePoolMode = pool.kekePoolMode || 'pool';
+        ridePhase = pool.ridePhase || 'pool-waiting';
+        selectedDestination = pool.selectedDestination || selectedDestination;
+        selectedTricycle = pool.selectedTricycle || selectedTricycle;
+        if (currentPoolId && (ridePhase === 'pool-waiting' || ridePhase === 'pool-ride')) {
+            setTimeout(() => {
+                if (ridePhase === 'pool-waiting') startKekePoolTracking();
+                else calculatePoolETAAndStart();
+            }, 1200);
+        }
+    } catch (e) {
+        console.warn('Failed to restore pool session:', e);
+        localStorage.removeItem(POOL_SESSION_KEY);
+    }
+}
+
+function persistPoolSession() {
+    const payload = {
+        currentPoolId,
+        kekePoolMode,
+        ridePhase,
+        selectedDestination,
+        selectedTricycle,
+        savedAt: new Date().toISOString()
+    };
+    localStorage.setItem(POOL_SESSION_KEY, JSON.stringify(payload));
+}
+
+function clearPoolSession() {
+    localStorage.removeItem(POOL_SESSION_KEY);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1511,6 +1555,7 @@ function joinKekePool(userName, location) {
             currentPoolId = data.pool.id;
             kekePoolGroup = data.pool;
             poolSyncState = data.pool.syncState || null;
+            persistPoolSession();
             if (data.pool.riders && data.pool.riders.length > 0) {
                 const myRider = data.pool.riders[data.pool.riders.length - 1];
                 if (myRider && myRider.id) localStorage.setItem('riderId', myRider.id);
@@ -1603,6 +1648,7 @@ function calculatePoolETAAndStart() {
                 const totalTime = poolState.syncState?.totalTimeMinutes || optimizedRoute.totalTime || 0;
                 poolSyncState = poolState.syncState || null;
                 ridePhase = 'pool-ride';
+                persistPoolSession();
                 if (kekePoolRefreshInterval) { clearInterval(kekePoolRefreshInterval); kekePoolRefreshInterval = null; }
 
                 poolRideData = {
@@ -1645,6 +1691,7 @@ function calculatePoolETAAndStartLocal() {
     console.log('Pool is full â€” calculating ETAs and starting simulation');
     ridePhase = 'pool-ride';
     poolSyncState = null;
+    persistPoolSession();
     if (kekePoolRefreshInterval) { clearInterval(kekePoolRefreshInterval); kekePoolRefreshInterval = null; }
     const riders = kekePoolGroup.riders;
     if (!riders || riders.length === 0) { console.error('No riders in pool'); return; }
@@ -2416,6 +2463,7 @@ function showAllRidersAboardPopup(lastRider, onStart) {
 // ============================================
 function startKekePoolTracking() {
     ridePhase = 'pool-waiting';
+    persistPoolSession();
     document.getElementById("mode-selector").classList.add("hidden");
     const tricyclePanel = document.getElementById("tricycle-panel");
     if (tricyclePanel) tricyclePanel.classList.add("hidden");
@@ -2839,6 +2887,7 @@ function cancelReservationAndClear() {
         ridePhase = 'none'; kekePoolMode = 'solo'; currentPoolId = null; poolRideData = null; currentPickupIndex = 0;
         kekePoolGroup = { id:null, destination:null, riders:[], maxRiders:4, createdAt:null };
         localStorage.removeItem('activeReservation'); localStorage.removeItem('riderId');
+        clearPoolSession();
         clearAllDisplays();
         alert('Reservation cancelled. Returning to main screen.');
         document.getElementById("destination-input").value = "";
@@ -2886,6 +2935,7 @@ function completeRide() {
                         userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null };
                         ridePhase = 'none';
                         localStorage.removeItem('activeReservation');
+                        clearPoolSession();
                         clearAllDisplays();
                         alert('Ride completed successfully. Thank you!');
                         loadAvailableTricycles();
