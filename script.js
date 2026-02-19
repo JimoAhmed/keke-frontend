@@ -65,7 +65,8 @@ let userSession = {
     vehicleName: null,
     vehicleDetails: null,
     passengerCount: 0,
-    pickupETA: null
+    pickupETA: null,
+    pickupLocation: null
 };
 
 const POOL_SESSION_KEY = 'activePoolSession';
@@ -238,7 +239,8 @@ async function restoreSoloRide(resumeState) {
             phone: vehicle.phone || '+234 803 123 4567'
         },
         passengerCount: vehicle.passengerCount || 1,
-        pickupETA: Number(resumeState.pickupETA) || 5
+        pickupETA: Number(resumeState.pickupETA) || 5,
+        pickupLocation: resumeState.pickupLocation || null
     };
     ridePhase = 'pickup';
     startReservationTracking(currentReservationId);
@@ -247,6 +249,7 @@ async function restoreSoloRide(resumeState) {
         vehicleId: vehicle.id,
         reservationId: currentReservationId,
         pickupETA: userSession.pickupETA,
+        pickupLocation: userSession.pickupLocation || null,
         destination: getSelectedDestinationSnapshot()
     });
 }
@@ -1362,6 +1365,7 @@ function startReservationTracking(reservationId) {
         reservationId: userSession.currentReservationId || reservationId,
         vehicleId: userSession.vehicleId || selectedTricycle?.id || null,
         pickupETA: userSession.pickupETA || 5,
+        pickupLocation: userSession.pickupLocation || userLocation || null,
         destination: getSelectedDestinationSnapshot()
     });
 
@@ -1467,12 +1471,14 @@ function startReservationTracking(reservationId) {
     if (selectedTricycle || userSession.vehicleDetails) {
         const tricycle = selectedTricycle || userSession.vehicleDetails;
         if (tricycle.lat && tricycle.lng) {
-            const userLoc = userLocation || map.getCenter();
+            const pickupTarget = userSession.pickupLocation || userLocation || map.getCenter();
             const pickupETA = userSession.pickupETA || 5;
             if (!tricycleSimulationInterval) simulateTricycleRoute(
                 { lat:tricycle.lat, lng:tricycle.lng },
-                { lat: typeof userLoc.lat === 'function' ? userLoc.lat() : userLoc.lat,
-                  lng: typeof userLoc.lng === 'function' ? userLoc.lng() : userLoc.lng },
+                {
+                    lat: typeof pickupTarget.lat === 'function' ? pickupTarget.lat() : pickupTarget.lat,
+                    lng: typeof pickupTarget.lng === 'function' ? pickupTarget.lng() : pickupTarget.lng
+                },
                 pickupETA,
                 "Coming to pick you up",
                 null
@@ -2921,13 +2927,18 @@ async function confirmReservation(tricycleId, userName) {
                 vehicleDetails: { ...selectedTricycle, driver:selectedTricycle?.driver||'John Okafor', phone:selectedTricycle?.phone||'+234 803 123 4567' },
                 reservationExpiry: new Date(Date.now() + 15*60000),
                 passengerCount: result.passengerCount || 1,
-                pickupETA: currentETA?.pickupETA || 5
+                pickupETA: currentETA?.pickupETA || 5,
+                pickupLocation: {
+                    lat: parseFloat(pickupLat),
+                    lng: parseFloat(pickupLng)
+                }
             };
             saveRideResumeState({
                 mode: 'solo',
                 reservationId: result.reservationId,
                 vehicleId: tricycleId,
                 pickupETA: userSession.pickupETA,
+                pickupLocation: userSession.pickupLocation || null,
                 destination: getSelectedDestinationSnapshot()
             });
             showReservationSuccess(result, userName);
@@ -3002,7 +3013,7 @@ function cancelReservationAndClear() {
             fetch(releaseEndpoint, { method:'POST', headers:{'Content-Type':'application/json'} })
                 .catch(error => console.error('Error:', error));
         }
-        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null };
+        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null };
         ridePhase = 'none'; kekePoolMode = 'solo'; currentPoolId = null; poolRideData = null; currentPickupIndex = 0;
         kekePoolGroup = { id:null, destination:null, riders:[], maxRiders:4, createdAt:null };
         localStorage.removeItem('riderId');
@@ -3052,7 +3063,7 @@ function completeRide() {
             fetch(`/api/vehicles/${userSession.vehicleId}/complete-ride`, { method:'POST', headers:{'Content-Type':'application/json'} })
                 .then(response => {
                     if (response.ok) {
-                        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null };
+                        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null };
                         ridePhase = 'none';
                         clearPoolSession();
                         clearRideResumeState();
