@@ -170,87 +170,20 @@ function checkPreSelectedCategory() {
 }
 
 function checkExistingReservation() {
-    const savedReservation = localStorage.getItem('activeReservation');
-    if (savedReservation) {
-        const reservation = JSON.parse(savedReservation);
-        const now = new Date();
-        const expiry = new Date(reservation.reservationExpiry || reservation.expiry);
-        if (now < expiry) {
-            userSession = reservation;
-            ridePhase = reservation.ridePhase || 'pickup';
-            setTimeout(() => { startReservationTracking(reservation.currentReservationId); }, 1500);
-        } else {
-            localStorage.removeItem('activeReservation');
-            ridePhase = 'none';
-        }
-    }
-
-    const savedPool = localStorage.getItem(POOL_SESSION_KEY);
-    if (!savedPool || userSession.hasActiveReservation) return;
-    try {
-        const pool = JSON.parse(savedPool);
-        // Keep a short persistence window for pool sessions.
-        const ageMs = Date.now() - new Date(pool.savedAt).getTime();
-        if (!Number.isNaN(ageMs) && ageMs > 30 * 60 * 1000) {
-            localStorage.removeItem(POOL_SESSION_KEY);
-            return;
-        }
-        currentPoolId = pool.currentPoolId || null;
-        kekePoolMode = pool.kekePoolMode || 'pool';
-        ridePhase = pool.ridePhase || 'pool-waiting';
-        selectedDestination = pool.selectedDestination || selectedDestination;
-        selectedTricycle = pool.selectedTricycle || selectedTricycle;
-        if (currentPoolId && (ridePhase === 'pool-waiting' || ridePhase === 'pool-ride')) {
-            setTimeout(() => {
-                if (ridePhase === 'pool-waiting') startKekePoolTracking();
-                else calculatePoolETAAndStart();
-            }, 1200);
-        }
-    } catch (e) {
-        console.warn('Failed to restore pool session:', e);
-        localStorage.removeItem(POOL_SESSION_KEY);
-    }
+    // Session persistence intentionally disabled:
+    // refreshing the page should not restore active rides.
+    localStorage.removeItem('activeReservation');
+    localStorage.removeItem(POOL_SESSION_KEY);
+    localStorage.removeItem('riderId');
+    ridePhase = 'none';
 }
 
 async function reconcilePersistedSessionWithBackend() {
-    // If no local session, nothing to reconcile.
-    if (!userSession.hasActiveReservation || !userSession.vehicleId) return;
-    try {
-        const res = await fetch(`/api/vehicles/${userSession.vehicleId}`);
-        if (!res.ok) return;
-        const vehicle = await res.json();
-        // If vehicle is free again, local session is stale -> clear it automatically.
-        if (vehicle.available === true && vehicle.reservedForPool === false && (vehicle.passengerCount || 0) === 0) {
-            localStorage.removeItem('activeReservation');
-            clearPoolSession();
-            localStorage.removeItem('riderId');
-            userSession = {
-                hasActiveReservation: false,
-                currentReservationId: null,
-                reservationExpiry: null,
-                vehicleId: null,
-                vehicleName: null,
-                vehicleDetails: null,
-                passengerCount: 0,
-                pickupETA: null
-            };
-            ridePhase = 'none';
-        }
-    } catch (error) {
-        console.warn('Session reconcile skipped:', error);
-    }
+    // Session persistence intentionally disabled.
 }
 
 function persistPoolSession() {
-    const payload = {
-        currentPoolId,
-        kekePoolMode,
-        ridePhase,
-        selectedDestination,
-        selectedTricycle,
-        savedAt: new Date().toISOString()
-    };
-    localStorage.setItem(POOL_SESSION_KEY, JSON.stringify(payload));
+    // Session persistence intentionally disabled.
 }
 
 function clearPoolSession() {
@@ -271,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     setTimeout(checkPreSelectedCategory, 500);
     setTimeout(checkExistingReservation, 1000);
-    setTimeout(reconcilePersistedSessionWithBackend, 1500);
+    // Session persistence intentionally disabled.
     const voiceBtn = document.getElementById("voice-toggle");
     if (voiceBtn) {
         voiceBtn.addEventListener("click", () => {
@@ -2844,7 +2777,6 @@ async function confirmReservation(tricycleId, userName) {
                 passengerCount: result.passengerCount || 1,
                 pickupETA: currentETA?.pickupETA || 5
             };
-            localStorage.setItem('activeReservation', JSON.stringify(userSession));
             showReservationSuccess(result, userName);
             setTimeout(() => { closeETAModal(); startReservationTracking(currentReservationId); }, 3000);
         } else {
