@@ -66,7 +66,8 @@ let userSession = {
     vehicleDetails: null,
     passengerCount: 0,
     pickupETA: null,
-    pickupLocation: null
+    pickupLocation: null,
+    pickupEtaRemainingSec: null
 };
 
 const POOL_SESSION_KEY = 'activePoolSession';
@@ -224,6 +225,12 @@ async function restoreSoloRide(resumeState) {
         return;
     }
 
+    const savedRemainingSec = Number(resumeState.pickupEtaRemainingSec);
+    const elapsedSinceSaveSec = Math.max(0, Math.floor((Date.now() - (Number(resumeState.updatedAt) || Date.now())) / 1000));
+    const recalculatedRemainingSec = Number.isFinite(savedRemainingSec)
+        ? Math.max(0, savedRemainingSec - elapsedSinceSaveSec)
+        : (Number(resumeState.pickupETA) || 5) * 60;
+
     selectedTricycle = vehicle;
     currentReservationId = resumeState.reservationId || `resume_${vehicle.id}`;
     selectedDestination = resumeState.destination || selectedDestination;
@@ -240,7 +247,8 @@ async function restoreSoloRide(resumeState) {
         },
         passengerCount: vehicle.passengerCount || 1,
         pickupETA: Number(resumeState.pickupETA) || 5,
-        pickupLocation: resumeState.pickupLocation || null
+        pickupLocation: resumeState.pickupLocation || null,
+        pickupEtaRemainingSec: recalculatedRemainingSec
     };
     ridePhase = 'pickup';
     startReservationTracking(currentReservationId);
@@ -250,6 +258,7 @@ async function restoreSoloRide(resumeState) {
         reservationId: currentReservationId,
         pickupETA: userSession.pickupETA,
         pickupLocation: userSession.pickupLocation || null,
+        pickupEtaRemainingSec: userSession.pickupEtaRemainingSec,
         destination: getSelectedDestinationSnapshot()
     });
 }
@@ -958,6 +967,7 @@ function displayTricycles(tricycles) {
         const maxCapacity = tricycle.maxCapacity || 4;
         const isFull = passengerCount >= maxCapacity;
         const isPoolLocked = tricycle.reservedForPool === true;
+        const isUnavailableSolo = tricycle.available === false && !isPoolLocked;
         let batteryClass = passengerCount < 50 ? 'battery-high' : (tricycle.battery < 50 ? 'battery-medium' : 'battery-high');
         if (tricycle.battery < 50) batteryClass = 'battery-medium';
         if (tricycle.battery < 30) batteryClass = 'battery-low';
@@ -989,6 +999,9 @@ function displayTricycles(tricycles) {
                     <button onclick="showETABooking(${tricycle.id}, true); event.stopPropagation();"
                             style="flex:1;padding:${isMobile?'14px 0':'10px 0'};background:#ffc107;color:#333;border:none;border-radius:${isMobile?'10px':'6px'};font-size:${isMobile?'1em':'0.9em'};font-weight:bold;cursor:pointer;border:2px solid #e0a800;">
                         <i class="fas fa-users"></i> Join Pool (${tricycle.passengerCount}/${tricycle.maxCapacity})
+                    </button>` : isUnavailableSolo ? `
+                    <button disabled style="flex:1;padding:${isMobile?'14px 0':'10px 0'};background:#ccc;color:#666;border:none;border-radius:${isMobile?'10px':'6px'};font-size:${isMobile?'1em':'0.9em'};font-weight:bold;cursor:not-allowed;">
+                        <i class="fas fa-lock"></i> Unavailable
                     </button>` : `
                     <button class="reserve-btn" onclick="showETABooking(${tricycle.id}); event.stopPropagation();"
                             style="flex:1;padding:${isMobile?'14px 0':'10px 0'};background:#28a745;color:white;border:none;border-radius:${isMobile?'10px':'6px'};font-size:${isMobile?'1em':'0.9em'};font-weight:bold;cursor:pointer;">
@@ -1202,6 +1215,9 @@ function showTricycleArrivedPopup() {
 }
 
 function showRideCompletedPopup() {
+    const isPoolRide = ridePhase === 'pool-ride';
+    const fareAmount = isPoolRide ? '₦200' : '₦800';
+    const fareNote = isPoolRide ? 'Please pay your driver ₦200 each' : 'Please pay your driver ₦800';
     const popup = document.createElement('div');
     popup.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:${isMobile?'30px 25px':'30px'};border-radius:${isMobile?'20px':'15px'};box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;max-width:${isMobile?'90%':'400px'};width:${isMobile?'90%':'auto'};text-align:center;border:3px solid #28a745;`;
     popup.innerHTML = `
@@ -1212,8 +1228,8 @@ function showRideCompletedPopup() {
         </div>
         <div style="background:#fff3cd;padding:${isMobile?'20px':'15px'};border-radius:${isMobile?'15px':'10px'};margin:20px 0;">
             <p style="margin:0;font-weight:bold;color:#856404;font-size:${isMobile?'1.3em':'18px'};"><i class="fas fa-money-bill-wave"></i> Please pay your driver:</p>
-            <p style="margin:10px 0;font-size:${isMobile?'48px':'32px'};font-weight:bold;color:#004080;">â‚¦200</p>
-            <p style="margin:0;font-size:${isMobile?'1.1em':'14px'};color:#666;">Standard campus fare</p>
+            <p style="margin:10px 0;font-size:${isMobile?'48px':'32px'};font-weight:bold;color:#004080;">${fareAmount}</p>
+            <p style="margin:0;font-size:${isMobile?'1.1em':'14px'};color:#666;">${fareNote}</p>
         </div>
         <div style="background:#e9f7ff;padding:${isMobile?'15px':'12px'};border-radius:${isMobile?'12px':'8px'};margin:15px 0;">
             <div style="display:flex;align-items:center;gap:10px;"><i class="fas fa-star" style="color:#ffc107;font-size:1.2em;"></i><span style="font-weight:bold;">Rate your driver:</span></div>
@@ -1366,6 +1382,9 @@ function startReservationTracking(reservationId) {
         vehicleId: userSession.vehicleId || selectedTricycle?.id || null,
         pickupETA: userSession.pickupETA || 5,
         pickupLocation: userSession.pickupLocation || userLocation || null,
+        pickupEtaRemainingSec: Number.isFinite(userSession.pickupEtaRemainingSec)
+            ? userSession.pickupEtaRemainingSec
+            : (userSession.pickupETA || 5) * 60,
         destination: getSelectedDestinationSnapshot()
     });
 
@@ -1486,10 +1505,24 @@ function startReservationTracking(reservationId) {
         }
     }
 
-    let etaSeconds = (userSession.pickupETA || 5) * 60;
+    let etaSeconds = Number.isFinite(userSession.pickupEtaRemainingSec)
+        ? Math.max(0, userSession.pickupEtaRemainingSec)
+        : (userSession.pickupETA || 5) * 60;
     if (reservationTimer) clearInterval(reservationTimer);
     reservationTimer = setInterval(() => {
         etaSeconds = Math.max(0, etaSeconds - 1);
+        userSession.pickupEtaRemainingSec = etaSeconds;
+        if (etaSeconds % 5 === 0) {
+            saveRideResumeState({
+                mode: 'solo',
+                reservationId: userSession.currentReservationId || reservationId,
+                vehicleId: userSession.vehicleId || selectedTricycle?.id || null,
+                pickupETA: Math.ceil(etaSeconds / 60),
+                pickupLocation: userSession.pickupLocation || userLocation || null,
+                pickupEtaRemainingSec: etaSeconds,
+                destination: getSelectedDestinationSnapshot()
+            });
+        }
         const etaDisplay = document.getElementById('pickup-eta-display');
         if (etaDisplay) {
             const mins = Math.floor(etaSeconds / 60);
@@ -1503,6 +1536,7 @@ function startReservationTracking(reservationId) {
         if (etaSeconds === 0) {
             clearInterval(reservationTimer);
             reservationTimer = null;
+            userSession.pickupEtaRemainingSec = 0;
             const statusDiv = document.getElementById('tracking-status');
             if (statusDiv) {
                 statusDiv.innerHTML = `
@@ -2648,6 +2682,10 @@ function showETABooking(tricycleId, forcePoolMode = false) {
         .then(tricycle => {
             const passengerCount = tricycle.passengerCount || 0;
             const maxCapacity = tricycle.maxCapacity || 4;
+            if (tricycle.available === false && tricycle.reservedForPool !== true) {
+                alert('This tricycle already has an active solo ride and cannot be booked right now.');
+                return;
+            }
             if (passengerCount >= maxCapacity) { alert(`This tricycle is full! Maximum ${maxCapacity} passengers.\n\nCurrent: ${passengerCount}/${maxCapacity}`); return; }
             if (tricycle.reservedForPool === true && !forcePoolMode) {
                 // Auto-switch to pool-only booking instead of allowing solo.
@@ -2931,7 +2969,8 @@ async function confirmReservation(tricycleId, userName) {
                 pickupLocation: {
                     lat: parseFloat(pickupLat),
                     lng: parseFloat(pickupLng)
-                }
+                },
+                pickupEtaRemainingSec: (currentETA?.pickupETA || 5) * 60
             };
             saveRideResumeState({
                 mode: 'solo',
@@ -2939,6 +2978,7 @@ async function confirmReservation(tricycleId, userName) {
                 vehicleId: tricycleId,
                 pickupETA: userSession.pickupETA,
                 pickupLocation: userSession.pickupLocation || null,
+                pickupEtaRemainingSec: userSession.pickupEtaRemainingSec,
                 destination: getSelectedDestinationSnapshot()
             });
             showReservationSuccess(result, userName);
@@ -3013,7 +3053,7 @@ function cancelReservationAndClear() {
             fetch(releaseEndpoint, { method:'POST', headers:{'Content-Type':'application/json'} })
                 .catch(error => console.error('Error:', error));
         }
-        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null };
+        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null, pickupEtaRemainingSec:null };
         ridePhase = 'none'; kekePoolMode = 'solo'; currentPoolId = null; poolRideData = null; currentPickupIndex = 0;
         kekePoolGroup = { id:null, destination:null, riders:[], maxRiders:4, createdAt:null };
         localStorage.removeItem('riderId');
@@ -3063,7 +3103,7 @@ function completeRide() {
             fetch(`/api/vehicles/${userSession.vehicleId}/complete-ride`, { method:'POST', headers:{'Content-Type':'application/json'} })
                 .then(response => {
                     if (response.ok) {
-                        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null };
+                        userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null, pickupEtaRemainingSec:null };
                         ridePhase = 'none';
                         clearPoolSession();
                         clearRideResumeState();
