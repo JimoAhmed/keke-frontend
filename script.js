@@ -314,6 +314,7 @@ async function checkExistingReservation() {
         clearRideResumeState();
         clearPoolSession();
         localStorage.removeItem('riderId');
+        showControls();
         return;
     }
 
@@ -362,8 +363,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (document.getElementById('tricycle-panel')) Object.assign(document.getElementById('tricycle-panel').style, getResponsivePanelPosition('tricycle-panel'));
         }
     });
+    const pendingResumeState = getRideResumeState();
+    if (pendingResumeState) {
+        hideControls();
+        const modeSelector = document.getElementById('mode-selector');
+        if (modeSelector) modeSelector.classList.add('hidden');
+    }
     setTimeout(checkPreSelectedCategory, 500);
-    setTimeout(checkExistingReservation, 1000);
+    setTimeout(checkExistingReservation, pendingResumeState ? 80 : 1000);
     // Session persistence intentionally disabled.
     const voiceBtn = document.getElementById("voice-toggle");
     if (voiceBtn) {
@@ -1238,7 +1245,41 @@ function showTricycleArrivedPopup() {
         <button id="start-ride-popup-btn" style="width:100%;padding:${isMobile?'18px':'15px'};background:#28a745;color:white;border:none;border-radius:${isMobile?'15px':'10px'};font-size:${isMobile?'1.3em':'16px'};font-weight:bold;cursor:pointer;margin-top:10px;"><i class="fas fa-play"></i> START RIDE</button>
         <button onclick="this.parentElement.remove()" style="width:100%;padding:${isMobile?'14px':'10px'};background:transparent;color:#666;border:none;border-radius:${isMobile?'15px':'10px'};font-size:${isMobile?'1.1em':'14px'};cursor:pointer;margin-top:10px;">Close</button>`;
     document.body.appendChild(popup);
-    document.getElementById('start-ride-popup-btn').onclick = function() { popup.remove(); startTricycleRide(); };
+    let hasStartedRide = false;
+    const startRideNow = () => {
+        if (hasStartedRide) return;
+        hasStartedRide = true;
+        if (popup.parentNode) popup.remove();
+        startTricycleRide();
+    };
+    const startBtn = document.getElementById('start-ride-popup-btn');
+    if (startBtn) startBtn.onclick = startRideNow;
+    setTimeout(startRideNow, 1200);
+}
+
+function startTricycleRide() {
+    if (!selectedDestination) {
+        alert('Destination is missing. Please select your destination again.');
+        showControls();
+        return;
+    }
+
+    ridePhase = 'trip';
+    hideControls();
+    hideEndNavigationButton();
+
+    const trackingPanel = document.getElementById('tracking-panel');
+    if (trackingPanel) trackingPanel.style.display = 'none';
+    if (showPanelBtn) showPanelBtn.style.display = 'none';
+
+    if (reservationTimer) {
+        clearInterval(reservationTimer);
+        reservationTimer = null;
+    }
+    clearTricycleVisualization();
+
+    travelMode = 'DRIVING';
+    startDirections('DRIVING');
 }
 
 function showRideCompletedPopup() {
@@ -2979,6 +3020,17 @@ async function confirmReservation(tricycleId, userName) {
     const destLat = document.getElementById('destLat').value;
     const destLng = document.getElementById('destLng').value;
     try {
+        const latestVehicleRes = await fetch(`/api/vehicles/${tricycleId}`);
+        if (latestVehicleRes.ok) {
+            const latestVehicle = await latestVehicleRes.json();
+            if (latestVehicle.available === false && latestVehicle.reservedForPool !== true) {
+                alert('This tricycle has already been booked by another rider. Please choose another tricycle.');
+                closeETAModal();
+                if (tricyclePanelVisible) loadAvailableTricycles();
+                return;
+            }
+        }
+
         const response = await fetch(`/api/vehicles/${tricycleId}/reserve`, {
             method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ userId:`user_${Date.now()}`, userName, pickupLat, pickupLng, destLat, destLng })
