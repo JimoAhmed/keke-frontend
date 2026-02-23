@@ -7,6 +7,9 @@ let travelMode = null;
 let watchId = null;
 let route = null;
 let currentStepIndex = 0;
+let activeRoutePoints = [];
+let activeRouteRemainingPolyline = null;
+let activeRouteCompletedPolyline = null;
 let userMarker = null;
 let voiceEnabled = true;
 let navTrackerCollapsed = false;
@@ -397,6 +400,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function initMap() {
     directionsService = new google.maps.DirectionsService();
     directionsRenderer = new google.maps.DirectionsRenderer({
+        suppressPolylines: true,
         suppressMarkers: false,
         suppressInfoWindows: true,
         preserveViewport: true
@@ -537,7 +541,9 @@ function requestRoute() {
     const cacheKey = `${userLocation.lat.toFixed(6)},${userLocation.lng.toFixed(6)}|${selectedDestination.lat},${selectedDestination.lng}|${travelMode}`;
     if (routeCache[cacheKey]) {
         route = routeCache[cacheKey]; currentStepIndex = 0;
-        directionsRenderer.setDirections(route); updateTrackerWithRoute(route); updateInstruction();
+        directionsRenderer.setDirections(route);
+        renderActiveRoutePolylines(route);
+        updateTrackerWithRoute(route); updateInstruction();
         return;
     }
     directionsService.route({
@@ -546,7 +552,9 @@ function requestRoute() {
     }, (result, status) => {
         if (status === "OK") {
             routeCache[cacheKey] = result; route = result; currentStepIndex = 0;
-            directionsRenderer.setDirections(result); updateTrackerWithRoute(result); updateInstruction();
+            directionsRenderer.setDirections(result);
+            renderActiveRoutePolylines(result);
+            updateTrackerWithRoute(result); updateInstruction();
         } else {
             if (instructionEl) instructionEl.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i> Route failed - try again';
             alert("Could not find a route. Please try a different travel mode.");
@@ -832,6 +840,7 @@ function checkUserProgress() {
     const progressPercent = (traveledDistance / totalDistance) * 100;
     const progressBar = document.getElementById('progress-bar');
     if (progressBar) progressBar.style.width = Math.min(progressPercent, 100) + '%';
+    updateActiveRouteProgress(userLocation);
     const destination = leg.end_location;
     const distanceToDestinationKm = haversineDistance(userLocation, {
         lat: destination.lat(),
@@ -905,6 +914,72 @@ function haversineDistance(coord1, coord2) {
 
 function calculateHaversineDistance(coord1, coord2) { return haversineDistance(coord1, coord2); }
 
+function clearActiveRoutePolylines() {
+    if (activeRouteRemainingPolyline) {
+        activeRouteRemainingPolyline.setMap(null);
+        activeRouteRemainingPolyline = null;
+    }
+    if (activeRouteCompletedPolyline) {
+        activeRouteCompletedPolyline.setMap(null);
+        activeRouteCompletedPolyline = null;
+    }
+    activeRoutePoints = [];
+}
+
+function renderActiveRoutePolylines(routeResult) {
+    clearActiveRoutePolylines();
+    const overviewPath = routeResult?.routes?.[0]?.overview_path;
+    if (!Array.isArray(overviewPath) || overviewPath.length < 2) return;
+
+    activeRoutePoints = overviewPath.map((p) => ({
+        lat: typeof p.lat === 'function' ? p.lat() : p.lat,
+        lng: typeof p.lng === 'function' ? p.lng() : p.lng
+    }));
+
+    activeRouteCompletedPolyline = new google.maps.Polyline({
+        path: [activeRoutePoints[0]],
+        geodesic: true,
+        strokeColor: '#94a3b8',
+        strokeOpacity: 0.6,
+        strokeWeight: isMobile ? 5 : 4,
+        map
+    });
+
+    activeRouteRemainingPolyline = new google.maps.Polyline({
+        path: activeRoutePoints,
+        geodesic: true,
+        strokeColor: '#2563eb',
+        strokeOpacity: 0.9,
+        strokeWeight: isMobile ? 6 : 5,
+        map
+    });
+}
+
+function updateActiveRouteProgress(position) {
+    if (!position || activeRoutePoints.length < 2 || !activeRouteRemainingPolyline || !activeRouteCompletedPolyline) return;
+
+    const currentPoint = {
+        lat: typeof position.lat === 'function' ? position.lat() : position.lat,
+        lng: typeof position.lng === 'function' ? position.lng() : position.lng
+    };
+
+    let closestIdx = 0;
+    let closestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < activeRoutePoints.length; i++) {
+        const d = calculateHaversineDistance(currentPoint, activeRoutePoints[i]);
+        if (d < closestDist) {
+            closestDist = d;
+            closestIdx = i;
+        }
+    }
+
+    const completedPath = activeRoutePoints.slice(0, closestIdx + 1);
+    completedPath.push(currentPoint);
+    const remainingPath = [currentPoint].concat(activeRoutePoints.slice(closestIdx + 1));
+    activeRouteCompletedPolyline.setPath(completedPath);
+    activeRouteRemainingPolyline.setPath(remainingPath);
+}
+
 function normalizeDestinationName(name) {
     return String(name || '').trim().toLowerCase();
 }
@@ -926,6 +1001,7 @@ function endNavigation() {
     route = null; currentStepIndex = 0; selectedDestination = null; travelMode = null; navTrackerCollapsed = false;
     rideCompletionPopupShown = false;
     directionsRenderer.setDirections({ routes: [] });
+    clearActiveRoutePolylines();
     const tracker = document.getElementById('navigation-tracker');
     if (tracker) tracker.remove();
     const endNavBtn = document.getElementById('end-navigation-btn');
@@ -2447,6 +2523,7 @@ function startRealDrivingNavigation() {
             route = result;
             currentStepIndex = 0;
             directionsRenderer.setDirections(result);
+            renderActiveRoutePolylines(result);
             updateTrackerWithRoute(result);
             updateInstruction();
 
@@ -3345,6 +3422,7 @@ function clearAllDisplays() {
     if (pickupSimulationInterval) { clearInterval(pickupSimulationInterval); pickupSimulationInterval=null; }
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId=null; }
     clearTricycleVisualization();
+    clearActiveRoutePolylines();
     clearTricycleMarkers();
     document.getElementById("mode-selector").classList.add("hidden");
     if (showPanelBtn) showPanelBtn.style.display = 'none';
