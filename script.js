@@ -27,6 +27,7 @@ let currentETA = null;
 let reservationTimer = null;
 let currentReservationId = null;
 let tricycleRoutePolyline = null;
+let tricycleCompletedPolyline = null;
 let tricycleMarker = null;
 let tricycleSimulationInterval = null;
 let ridePhase = 'none'; // 'none', 'pickup', 'trip', 'pool-waiting', 'pool-ride'
@@ -1403,6 +1404,7 @@ function confirmRideCompletion() {
 
 function simulateTricycleRoute(tricycleLocation, targetLocation, duration, message, onComplete) {
     if (tricycleRoutePolyline) tricycleRoutePolyline.setMap(null);
+    if (tricycleCompletedPolyline) tricycleCompletedPolyline.setMap(null);
     if (tricycleMarker) tricycleMarker.setMap(null);
     const ds = new google.maps.DirectionsService();
     ds.route({ origin:tricycleLocation, destination:targetLocation, travelMode:google.maps.TravelMode.DRIVING, provideRouteAlternatives:false },
@@ -1410,7 +1412,23 @@ function simulateTricycleRoute(tricycleLocation, targetLocation, duration, messa
             if (status === 'OK') {
                 const routePath = result.routes[0];
                 const path = routePath.overview_path;
-                tricycleRoutePolyline = new google.maps.Polyline({ path, geodesic:true, strokeColor:"#28a745", strokeOpacity:0.4, strokeWeight:isMobile?5:4, map });
+                const routePoints = path.map(p => ({ lat: p.lat(), lng: p.lng() }));
+                tricycleCompletedPolyline = new google.maps.Polyline({
+                    path: [routePoints[0]],
+                    geodesic: true,
+                    strokeColor: "#94a3b8",
+                    strokeOpacity: 0.55,
+                    strokeWeight: isMobile ? 5 : 4,
+                    map
+                });
+                tricycleRoutePolyline = new google.maps.Polyline({
+                    path: routePoints,
+                    geodesic: true,
+                    strokeColor: "#2563eb",
+                    strokeOpacity: 0.9,
+                    strokeWeight: isMobile ? 6 : 5,
+                    map
+                });
                 const totalSeconds = duration * 60;
                 tricycleMarker = new google.maps.Marker({
                     position: tricycleLocation, map,
@@ -1437,6 +1455,21 @@ function simulateTricycleRoute(tricycleLocation, targetLocation, duration, messa
                         if (i === path.length-1) currentPoint = { lat:path[i].lat(), lng:path[i].lng() };
                     }
                     tricycleMarker.setPosition(currentPoint);
+
+                    // Keep route visuals clean: completed segment fades, remaining segment stays bright.
+                    if (routePoints.length > 1 && tricycleRoutePolyline && tricycleCompletedPolyline) {
+                        let closestIdx = 0;
+                        let closestDist = Number.POSITIVE_INFINITY;
+                        for (let j = 0; j < routePoints.length; j++) {
+                            const d = calculateHaversineDistance(currentPoint, routePoints[j]);
+                            if (d < closestDist) { closestDist = d; closestIdx = j; }
+                        }
+                        const completedPath = routePoints.slice(0, closestIdx + 1);
+                        completedPath.push(currentPoint);
+                        const remainingPath = [currentPoint].concat(routePoints.slice(closestIdx + 1));
+                        tricycleCompletedPolyline.setPath(completedPath);
+                        tricycleRoutePolyline.setPath(remainingPath);
+                    }
                     tricycleMarker.setTitle(`${Math.ceil(Math.max(0, duration-(secondsPassed/60)))} min remaining`);
                     if (progress >= 1) {
                         clearInterval(tricycleSimulationInterval);
@@ -1488,7 +1521,22 @@ function getSimulationTricycleMarkerIcon() {
 function simulateStraightLine(start, end, duration, message, onComplete) {
     const latIncrement = (end.lat - start.lat) / (duration * 60);
     const lngIncrement = (end.lng - start.lng) / (duration * 60);
-    tricycleRoutePolyline = new google.maps.Polyline({ path:[start,end], geodesic:true, strokeColor:"#28a745", strokeOpacity:0.4, strokeWeight:isMobile?5:4, map });
+    tricycleCompletedPolyline = new google.maps.Polyline({
+        path:[start],
+        geodesic:true,
+        strokeColor:"#94a3b8",
+        strokeOpacity:0.55,
+        strokeWeight:isMobile?5:4,
+        map
+    });
+    tricycleRoutePolyline = new google.maps.Polyline({
+        path:[start,end],
+        geodesic:true,
+        strokeColor:"#2563eb",
+        strokeOpacity:0.9,
+        strokeWeight:isMobile?6:5,
+        map
+    });
     let currentPosition = { lat:start.lat, lng:start.lng };
     tricycleMarker = new google.maps.Marker({
         position: currentPosition, map, title: message,
@@ -1504,6 +1552,10 @@ function simulateStraightLine(start, end, duration, message, onComplete) {
         currentPosition.lng = start.lng + lngIncrement * secondsPassed;
         if (progress >= 1) { currentPosition.lat = end.lat; currentPosition.lng = end.lng; }
         tricycleMarker.setPosition(currentPosition);
+        if (tricycleCompletedPolyline && tricycleRoutePolyline) {
+            tricycleCompletedPolyline.setPath([start, currentPosition]);
+            tricycleRoutePolyline.setPath([currentPosition, end]);
+        }
         tricycleMarker.setTitle(`${Math.ceil(Math.max(0, duration-(secondsPassed/60)))} min remaining`);
         if (progress >= 1) {
             clearInterval(tricycleSimulationInterval);
@@ -3291,6 +3343,7 @@ function clearAllDisplays() {
 
 function clearTricycleVisualization() {
     if (tricycleRoutePolyline) { tricycleRoutePolyline.setMap(null); tricycleRoutePolyline=null; }
+    if (tricycleCompletedPolyline) { tricycleCompletedPolyline.setMap(null); tricycleCompletedPolyline=null; }
     if (tricycleMarker) { tricycleMarker.setMap(null); tricycleMarker=null; }
 }
 
