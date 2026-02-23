@@ -953,6 +953,22 @@ function initializeTricycleSystem() {
 
 // createFindTricyclesButton() REMOVED â€” green button eliminated per requirements.
 
+function toggleControlsForTricycleView(isOpen) {
+    if (!isMobile) return;
+    const controls = document.getElementById('controls');
+    if (!controls) return;
+
+    if (isOpen) {
+        controls.dataset.preTricycleDisplay = controls.style.display || '';
+        controls.style.display = 'none';
+        return;
+    }
+
+    const previousDisplay = controls.dataset.preTricycleDisplay;
+    controls.style.display = previousDisplay || 'block';
+    delete controls.dataset.preTricycleDisplay;
+}
+
 function toggleTricycleView() {
     const tricyclePanel = document.getElementById('tricycle-panel');
     const findBtn = document.getElementById('find-tricycles-btn');
@@ -962,11 +978,13 @@ function toggleTricycleView() {
     }
     if (tricyclePanelVisible) {
         tricyclePanel.classList.add('hidden');
+        toggleControlsForTricycleView(false);
         if (findBtn) findBtn.innerHTML = '<i class="fas fa-shuttle-van"></i> Find Campus Tricycles';
         clearTricycleMarkers();
         stopTricycleRefresh();
     } else {
         tricyclePanel.classList.remove('hidden');
+        toggleControlsForTricycleView(true);
         if (findBtn) findBtn.innerHTML = '<i class="fas fa-times"></i> Hide Tricycles';
         Object.assign(tricyclePanel.style, getResponsivePanelPosition('tricycle-panel'));
         loadAvailableTricycles();
