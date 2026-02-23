@@ -1340,6 +1340,7 @@ function startTricycleRide() {
 
     ridePhase = 'trip';
     rideCompletionPopupShown = false;
+    clearTricycleMarkers();
     hideControls();
     hideEndNavigationButton();
 
@@ -1414,7 +1415,7 @@ function simulateTricycleRoute(tricycleLocation, targetLocation, duration, messa
                 tricycleMarker = new google.maps.Marker({
                     position: tricycleLocation, map,
                     title: message,
-                    icon: { url:"http://maps.google.com/mapfiles/ms/icons/green-dot.png", scaledSize:new google.maps.Size(isMobile?48:40, isMobile?48:40) },
+                    icon: getSimulationTricycleMarkerIcon(),
                     animation: google.maps.Animation.BOUNCE
                 });
                 let secondsPassed = 0;
@@ -1457,6 +1458,33 @@ function simulateTricycleRoute(tricycleLocation, targetLocation, duration, messa
         });
 }
 
+function getSimulationTricycleMarkerIcon() {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+        <defs>
+          <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/>
+          </filter>
+        </defs>
+        <g filter="url(#s)">
+          <circle cx="18" cy="46" r="8" fill="#1f2937"/>
+          <circle cx="46" cy="46" r="8" fill="#1f2937"/>
+          <circle cx="18" cy="46" r="4" fill="#fff"/>
+          <circle cx="46" cy="46" r="4" fill="#fff"/>
+          <rect x="14" y="24" width="34" height="14" rx="4" fill="#16a34a"/>
+          <rect x="34" y="18" width="10" height="8" rx="2" fill="#2563eb"/>
+          <rect x="18" y="28" width="12" height="6" rx="1" fill="#bfdbfe"/>
+          <rect x="31" y="28" width="12" height="6" rx="1" fill="#bfdbfe"/>
+          <path d="M10 42h42" stroke="#16a34a" stroke-width="4" stroke-linecap="round"/>
+        </g>
+      </svg>`;
+    return {
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+        scaledSize: new google.maps.Size(isMobile ? 48 : 40, isMobile ? 48 : 40),
+        anchor: new google.maps.Point(isMobile ? 24 : 20, isMobile ? 24 : 20)
+    };
+}
+
 function simulateStraightLine(start, end, duration, message, onComplete) {
     const latIncrement = (end.lat - start.lat) / (duration * 60);
     const lngIncrement = (end.lng - start.lng) / (duration * 60);
@@ -1464,7 +1492,7 @@ function simulateStraightLine(start, end, duration, message, onComplete) {
     let currentPosition = { lat:start.lat, lng:start.lng };
     tricycleMarker = new google.maps.Marker({
         position: currentPosition, map, title: message,
-        icon: { url:"http://maps.google.com/mapfiles/ms/icons/green-dot.png", scaledSize:new google.maps.Size(isMobile?48:40, isMobile?48:40) },
+        icon: getSimulationTricycleMarkerIcon(),
         animation: google.maps.Animation.BOUNCE
     });
     let secondsPassed = 0, totalSeconds = duration * 60;
@@ -1518,6 +1546,7 @@ function createShowPanelButton() {
 function startReservationTracking(reservationId) {
     if (reservationTimer) clearInterval(reservationTimer);
     if (ridePhase === 'none') ridePhase = 'pickup';
+    clearTricycleMarkers();
     document.getElementById("mode-selector").classList.add("hidden");
     hideControls();
     hideEndNavigationButton();
@@ -2247,6 +2276,7 @@ function startRealDrivingNavigation() {
     console.log('All riders aboard â€” starting real Google Maps driving navigation');
     ridePhase = 'pool-ride';
     rideCompletionPopupShown = false;
+    clearTricycleMarkers();
 
     // Hide tracking panel; navigation tracker will take over
     const trackingPanel = document.getElementById('tracking-panel');
@@ -2758,6 +2788,7 @@ function showAllRidersAboardPopup(lastRider, onStart) {
 // ============================================
 function startKekePoolTracking() {
     ridePhase = 'pool-waiting';
+    clearTricycleMarkers();
     persistPoolSession();
     document.getElementById("mode-selector").classList.add("hidden");
     const tricyclePanel = document.getElementById("tricycle-panel");
