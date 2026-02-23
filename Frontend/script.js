@@ -714,8 +714,8 @@ function createNavigationTracker() {
                     <button onclick="toggleNavTracker()" style="width:${isMobile?'44px':'30px'};height:${isMobile?'44px':'30px'};display:flex;align-items:center;justify-content:center;background:#f8f9fa;color:#004080;border:1px solid #dee2e6;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'18px':'12px'};">
                         <i class="fas fa-${navTrackerCollapsed?'chevron-down':'chevron-up'}"></i>
                     </button>
-                    <button onclick="toggleVoice()" style="width:${isMobile?'44px':'30px'};height:${isMobile?'44px':'30px'};display:flex;align-items:center;justify-content:center;background:${voiceEnabled?'#17a2b8':'#6c757d'};color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'20px':'12px'};">
-                        ${voiceEnabled?"”Š":"”‡"}
+                    <button onclick="toggleVoice()" style="min-width:${isMobile?'92px':'84px'};height:${isMobile?'44px':'30px'};display:flex;align-items:center;justify-content:center;background:${voiceEnabled?'#17a2b8':'#6c757d'};color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'12px':'11px'};font-weight:700;padding:0 10px;">
+                        ${voiceEnabled ? "Sound ON" : "Sound OFF"}
                     </button>
                 </div>
             </div>
@@ -1287,7 +1287,7 @@ function showTricycleDetails(tricycleId) {
             const maxCapacity = tricycle.maxCapacity || 4;
             const isFull = passengerCount >= maxCapacity;
             const isPoolLocked = tricycle.reservedForPool === true;
-            alert(`•”•••••••••••••••••••••••••••••••••••••••••••—\n•‘     BABCOCK CAMPUS TRICYCLE              •‘\n• •••••••••••••••••••••••••••••••••••••••••••£\n•‘  š ${tricycle.name}\n•‘  ‘¥ Passengers: ${passengerCount}/${maxCapacity} ${isFull?'(FULL)':''}\n•‘  š¦ Mode: ${isPoolLocked?'Pool Only':'Solo & Pool'}\n•‘  Ž¨ Color: ${tricycle.color}\n•‘  ”‹ Battery: ${tricycle.battery}%\n•‘  §‘ Driver: ${tricycle.driver||'Not Assigned'}\n•‘  “ž Phone: ${tricycle.phone||'+234 XXX XXX XXXX'}\n•‘  “ Status: ${isFull?'›” FULL':(isPoolLocked?'šŒ Pool Only':(tricycle.available?' Available':'›” Reserved'))}\n•š•••••••••••••••••••••••••••••••••••••••••••`);
+            alert(`BABCOCK CAMPUS TRICYCLE${tricycle.name}\‘  Passengers: ${passengerCount}/${maxCapacity} ${isFull?'(FULL)':''}\n•‘ Mode: ${isPoolLocked?'Pool Only':'Solo & Pool'}\n•‘ Color: ${tricycle.color}\n•‘‹ Battery: ${tricycle.battery}%\‘ Driver: ${tricycle.driver||'Not Assigned'}\n•‘ Phone: ${tricycle.phone||'+234 XXX XXX XXXX'}\n•‘Status: ${isFull?'›” FULL':(isPoolLocked?'Pool Only':(tricycle.available?'Available':'›” Reserved'))}\n`);
         });
 }
 
@@ -1377,8 +1377,8 @@ function showRideCompletedPopup() {
     currentStepIndex = 0;
     clearTricycleVisualization();
     hideEndNavigationButton();
-    const fareAmount = isPoolRide ? '?200' : '?800';
-    const fareNote = isPoolRide ? 'Please pay your driver ?200 each' : 'Please pay your driver ?800';
+    const fareAmount = isPoolRide ? '₦200' : '₦800';
+    const fareNote = isPoolRide ? 'Please pay your driver ₦200 each' : 'Please pay your driver ₦800';
     const popup = document.createElement('div');
     popup.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:${isMobile?'30px 25px':'30px'};border-radius:${isMobile?'20px':'15px'};box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;max-width:${isMobile?'90%':'400px'};width:${isMobile?'90%':'auto'};text-align:center;border:3px solid #28a745;`;
     popup.innerHTML = `
@@ -1489,7 +1489,7 @@ function simulateTricycleRoute(tricycleLocation, targetLocation, duration, messa
                         clearInterval(tricycleSimulationInterval);
                         tricycleSimulationInterval = null;
                         tricycleMarker.setPosition(targetLocation);
-                        tricycleMarker.setTitle(' Arrived!');
+                        tricycleMarker.setTitle('Arrived!');
                         tricycleMarker.setAnimation(null);
                         if (onComplete) onComplete();
                         else if (ridePhase === 'pool-ride') moveToNextPickup();
@@ -3379,5 +3379,6 @@ function completeRide() {
         }
     }
 }
+
 
 

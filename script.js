@@ -714,8 +714,8 @@ function createNavigationTracker() {
                     <button onclick="toggleNavTracker()" style="width:${isMobile?'44px':'30px'};height:${isMobile?'44px':'30px'};display:flex;align-items:center;justify-content:center;background:#f8f9fa;color:#004080;border:1px solid #dee2e6;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'18px':'12px'};">
                         <i class="fas fa-${navTrackerCollapsed?'chevron-down':'chevron-up'}"></i>
                     </button>
-                    <button onclick="toggleVoice()" style="width:${isMobile?'44px':'30px'};height:${isMobile?'44px':'30px'};display:flex;align-items:center;justify-content:center;background:${voiceEnabled?'#17a2b8':'#6c757d'};color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'20px':'12px'};">
-                        ${voiceEnabled?"”Š":"”‡"}
+                    <button onclick="toggleVoice()" style="min-width:${isMobile?'92px':'84px'};height:${isMobile?'44px':'30px'};display:flex;align-items:center;justify-content:center;background:${voiceEnabled?'#17a2b8':'#6c757d'};color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'12px':'11px'};font-weight:700;padding:0 10px;">
+                        ${voiceEnabled ? "Sound ON" : "Sound OFF"}
                     </button>
                 </div>
             </div>
