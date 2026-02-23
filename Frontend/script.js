@@ -706,7 +706,7 @@ function createNavigationTracker() {
                         <h3 style="margin:0;color:#004080;font-size:${isMobile?'1.1em':'0.95em'};font-weight:bold;">
                             ${navTrackerCollapsed ? 'To: '+selectedDestination.name.substring(0,isMobile?20:15)+'...' : 'Navigation Active'}
                         </h3>
-                        ${!navTrackerCollapsed ? `<div style="font-size:${isMobile?'0.9em':'0.8em'};color:#666;margin-top:2px;">${travelMode==='DRIVING'?'DRIVE':travelMode}  ${selectedDestination.name}</div>` : ''}
+                        ${!navTrackerCollapsed ? `<div style="font-size:${isMobile?'0.9em':'0.8em'};color:#666;margin-top:2px;">${travelMode==='DRIVING'?'DRIVING TO':travelMode}  ${selectedDestination.name}</div>` : ''}
                     </div>
                 </div>
                 <div style="display:flex;gap:${isMobile?'10px':'5px'};">
@@ -897,6 +897,18 @@ function haversineDistance(coord1, coord2) {
 
 function calculateHaversineDistance(coord1, coord2) { return haversineDistance(coord1, coord2); }
 
+function normalizeDestinationName(name) {
+    return String(name || '').trim().toLowerCase();
+}
+
+function shouldShowVehicleForSelectedDestination(vehicle) {
+    if (!vehicle || vehicle.reservedForPool !== true) return true;
+    if (!selectedDestination) return false;
+    const vehiclePoolDestination = normalizeDestinationName(vehicle.poolDestinationName);
+    const userDestination = normalizeDestinationName(selectedDestination.name);
+    return vehiclePoolDestination && vehiclePoolDestination === userDestination;
+}
+
 function endNavigation() {
     if ((userSession.hasActiveReservation && ridePhase==='trip') || ridePhase==='pool-ride') {
         alert("Cannot end navigation while in an active ride. Please complete or cancel the ride first.");
@@ -1018,6 +1030,7 @@ async function loadAvailableTricycles() {
             console.error('Unexpected tricycles payload:', tricycles);
             throw new Error(tricycles?.error || 'Unexpected API response format');
         }
+        tricycles = tricycles.filter(shouldShowVehicleForSelectedDestination);
         displayTricycles(tricycles);
         showTricycleMarkers(tricycles);
     } catch (error) {
@@ -1522,7 +1535,7 @@ function startReservationTracking(reservationId) {
                     <button onclick="hideTrackingPanel()" style="padding:${isMobile?'12px 18px':'8px 12px'};background:#6c757d;color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'0.95em':'0.85em'};"><i class="fas fa-eye-slash"></i> Hide</button>
                 </div>
                 <div style="background:linear-gradient(135deg,#004080,#0066cc);color:white;padding:${isMobile?'18px':'14px'};border-radius:${isMobile?'15px':'10px'};margin-bottom:15px;text-align:center;">
-                    <div style="font-size:${isMobile?'2em':'1.6em'};margin-bottom:6px;animation:bounce 1s infinite;">ðŸ›º</div>
+                    <div style="font-size:${isMobile?'2em':'1.6em'};margin-bottom:6px;animation:bounce 1s infinite;">Arriving</div>
                     <div style="font-weight:bold;font-size:${isMobile?'1.1em':'1em'};">${vehicleName} is on the way!</div>
                     <div style="font-size:${isMobile?'2.2em':'1.8em'};font-weight:bold;margin:8px 0;" id="pickup-eta-display">${pickupETA} min</div>
                     <div style="font-size:${isMobile?'0.9em':'0.85em'};opacity:0.85;">Estimated pickup time</div>
@@ -2325,7 +2338,7 @@ function startRealDrivingNavigation() {
 
             // Update tracker header to show "Pool Ride" context
             const trackerHeader = document.querySelector('#navigation-tracker h3');
-            if (trackerHeader) trackerHeader.textContent = ' Pool Ride” Navigation Active';
+            if (trackerHeader) trackerHeader.textContent = ' Pool Ride Navigation Active';
 
             // Show a brief toast confirming real nav started
             showNavStartToast(dest.name);
@@ -2795,6 +2808,14 @@ function showETABooking(tricycleId, forcePoolMode = false) {
     fetch(`/api/vehicles/${tricycleId}`)
         .then(res => res.json())
         .then(tricycle => {
+            if (tricycle.reservedForPool === true) {
+                const poolDestination = normalizeDestinationName(tricycle.poolDestinationName);
+                const requestedDestination = normalizeDestinationName(selectedDestination?.name);
+                if (!requestedDestination || !poolDestination || requestedDestination !== poolDestination) {
+                    alert(`This tricycle is already in a pool going to ${tricycle.poolDestinationName || 'another destination'}. Select that same destination to join.`);
+                    return;
+                }
+            }
             const passengerCount = tricycle.passengerCount || 0;
             const maxCapacity = tricycle.maxCapacity || 4;
             if (tricycle.available === false && tricycle.reservedForPool !== true) {
