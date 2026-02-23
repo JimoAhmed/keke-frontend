@@ -378,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (voiceBtn) {
         voiceBtn.addEventListener("click", () => {
             voiceEnabled = !voiceEnabled;
-            voiceBtn.innerText = voiceEnabled ? "ðŸ”Š Voice ON" : "ðŸ”‡ Voice OFF";
+            voiceBtn.innerText = voiceEnabled ? "Voice ON" : "Voice OFF";
         });
     }
     if (!document.getElementById('end-navigation-btn')) {
@@ -818,6 +818,7 @@ function updateTrackerWithRoute(routeResult) {
 
 function checkUserProgress() {
     if (!route || !userLocation) return;
+    if (ridePhase === 'completed') return;
     const leg = route.routes[0].legs[0];
     const totalDistance = leg.distance.value;
     let traveledDistance = 0;
@@ -837,13 +838,17 @@ function checkUserProgress() {
         lng: destination.lng()
     });
     if ((ridePhase==='trip'||ridePhase==='pool-ride') && distanceToDestinationKm <= 0.05) {
-        updateInstruction("✅ Arrived at destination!");
-        showRideCompletedPopup();
+        if (!rideCompletionPopupShown) {
+            updateInstruction("Arrived at destination.");
+            showRideCompletedPopup();
+        }
         return;
     }
     if (currentStepIndex >= leg.steps.length) {
-        updateInstruction("âœ… Arrived at destination!");
-        if (ridePhase==='trip'||ridePhase==='pool-ride') showRideCompletedPopup();
+        if (!rideCompletionPopupShown) {
+            updateInstruction("Arrived at destination.");
+            if (ridePhase==='trip'||ridePhase==='pool-ride') showRideCompletedPopup();
+        }
         setTimeout(() => { if (ridePhase!=='trip'&&ridePhase!=='pool-ride') endNavigation(); }, 3000);
         return;
     }
@@ -856,8 +861,10 @@ function checkUserProgress() {
         if (currentStepIndex < leg.steps.length) {
             updateInstruction();
         } else {
-            updateInstruction("âœ… Arrived at destination!");
-            if (ridePhase==='trip'||ridePhase==='pool-ride') showRideCompletedPopup();
+            if (!rideCompletionPopupShown) {
+                updateInstruction("Arrived at destination.");
+                if (ridePhase==='trip'||ridePhase==='pool-ride') showRideCompletedPopup();
+            }
             if (ridePhase!=='trip'&&ridePhase!=='pool-ride') setTimeout(() => endNavigation(), 3000);
         }
     }
@@ -1361,8 +1368,15 @@ function startTricycleRide() {
 
 function showRideCompletedPopup() {
     if (rideCompletionPopupShown) return;
-    rideCompletionPopupShown = true;
     const isPoolRide = ridePhase === 'pool-ride';
+    rideCompletionPopupShown = true;
+    ridePhase = 'completed';
+    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    if (directionsRenderer) directionsRenderer.setDirections({ routes: [] });
+    route = null;
+    currentStepIndex = 0;
+    clearTricycleVisualization();
+    hideEndNavigationButton();
     const fareAmount = isPoolRide ? '₦200' : '₦800';
     const fareNote = isPoolRide ? 'Please pay your driver ₦200 each' : 'Please pay your driver ₦800';
     const popup = document.createElement('div');
@@ -1370,7 +1384,7 @@ function showRideCompletedPopup() {
     popup.innerHTML = `
         <div style="margin-bottom:20px;">
             <div style="width:${isMobile?'100px':'80px'};height:${isMobile?'100px':'80px'};background:#28a745;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:${isMobile?'48px':'36px'};"><i class="fas fa-flag-checkered"></i></div>
-            <h2 style="color:#28a745;margin:0 0 10px 0;">âœ… Ride Completed!</h2>
+            <h2 style="color:#28a745;margin:0 0 10px 0;">Ride Completed</h2>
             <p style="color:#666;">You have arrived at your destination. Thank you for choosing Babcock Campus Tricycles!</p>
         </div>
         <div style="background:#fff3cd;padding:${isMobile?'20px':'15px'};border-radius:${isMobile?'15px':'10px'};margin:20px 0;">
@@ -1381,7 +1395,7 @@ function showRideCompletedPopup() {
         <div style="background:#e9f7ff;padding:${isMobile?'15px':'12px'};border-radius:${isMobile?'12px':'8px'};margin:15px 0;">
             <div style="display:flex;align-items:center;gap:10px;"><i class="fas fa-star" style="color:#ffc107;font-size:1.2em;"></i><span style="font-weight:bold;">Rate your driver:</span></div>
             <div style="display:flex;justify-content:center;gap:15px;margin-top:10px;">
-                ${[1,2,3,4,5].map(i=>`<span onclick="alert('Thanks for rating!')" style="font-size:2em;cursor:pointer;">â­</span>`).join('')}
+                ${[1,2,3,4,5].map(i=>`<button onclick="alert('Thanks for rating!')" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;">${i}</button>`).join('')}
             </div>
         </div>
         <button id="complete-ride-popup-btn" style="width:100%;padding:${isMobile?'18px':'15px'};background:#004080;color:white;border:none;border-radius:${isMobile?'15px':'10px'};font-size:${isMobile?'1.3em':'16px'};font-weight:bold;cursor:pointer;margin-top:10px;"><i class="fas fa-check"></i> CONFIRM PAYMENT & COMPLETE</button>
@@ -1393,7 +1407,7 @@ function showRideCompletedPopup() {
 function confirmRideCompletion() {
     if (userSession.vehicleId) {
         fetch(`/api/vehicles/${userSession.vehicleId}/complete-ride`, { method:'POST', headers:{'Content-Type':'application/json'} })
-            .then(response => { if (response.ok) { clearAllDisplays(); alert('âœ… Ride completed successfully. Thank you!'); } })
+            .then(response => { if (response.ok) { clearAllDisplays(); alert('Ride completed successfully. Thank you!'); } })
             .catch(error => console.error('Error:', error));
     }
 }
