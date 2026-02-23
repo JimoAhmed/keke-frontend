@@ -11,6 +11,8 @@ let activeRoutePoints = [];
 let activeRouteRemainingPolyline = null;
 let activeRouteCompletedPolyline = null;
 let activeRouteLastClosestIdx = -1;
+let activeRouteStartMarker = null;
+let activeRouteEndMarker = null;
 let userMarker = null;
 let voiceEnabled = true;
 let navTrackerCollapsed = false;
@@ -402,7 +404,7 @@ function initMap() {
     directionsService = new google.maps.DirectionsService();
     directionsRenderer = new google.maps.DirectionsRenderer({
         suppressPolylines: true,
-        suppressMarkers: false,
+        suppressMarkers: true,
         suppressInfoWindows: true,
         preserveViewport: true
     });
@@ -938,6 +940,14 @@ function clearActiveRoutePolylines() {
         activeRouteCompletedPolyline.setMap(null);
         activeRouteCompletedPolyline = null;
     }
+    if (activeRouteStartMarker) {
+        activeRouteStartMarker.setMap(null);
+        activeRouteStartMarker = null;
+    }
+    if (activeRouteEndMarker) {
+        activeRouteEndMarker.setMap(null);
+        activeRouteEndMarker = null;
+    }
     activeRoutePoints = [];
     activeRouteLastClosestIdx = -1;
 }
@@ -952,6 +962,32 @@ function renderActiveRoutePolylines(routeResult) {
         lng: typeof p.lng === 'function' ? p.lng() : p.lng
     }));
     activeRouteLastClosestIdx = 0;
+
+    const leg = routeResult?.routes?.[0]?.legs?.[0];
+    const redDotIcon = {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: isMobile ? 7 : 6,
+        fillColor: '#dc3545',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2
+    };
+    if (leg?.start_location) {
+        activeRouteStartMarker = new google.maps.Marker({
+            position: leg.start_location,
+            map,
+            icon: redDotIcon,
+            title: 'Route start'
+        });
+    }
+    if (leg?.end_location) {
+        activeRouteEndMarker = new google.maps.Marker({
+            position: leg.end_location,
+            map,
+            icon: redDotIcon,
+            title: 'Route end'
+        });
+    }
 
     activeRouteCompletedPolyline = new google.maps.Polyline({
         path: [activeRoutePoints[0]],
@@ -2358,7 +2394,7 @@ function handleGroupPickup(tricycle, sharedRider, syncState = null) {
             <div id="tracking-status">
                 <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:center;">
                     <i class="fas fa-circle-notch fa-spin" style="color:#004080;font-size:${isMobile?'28px':'22px'};"></i>
-                    <p style="margin-top:12px;font-weight:bold;color:#004080;">Tricycle heading to your location€¦</p>
+                    <p style="margin-top:12px;font-weight:bold;color:#004080;">Tricycle heading to your location</p>
                 </div>
             </div>
             <div style="display:flex;gap:10px;margin-top:15px;">
@@ -2395,7 +2431,7 @@ function handleGroupPickup(tricycle, sharedRider, syncState = null) {
         initialDurationMinutes,
         `Picking up all ${kekePoolGroup.riders.length} riders`,
         () => {
-            // All riders at same spot €” show "everyone aboard" popup then launch real nav
+            // All riders at same spot show "everyone aboard" popup then launch real nav
             showGroupAllAboardPopup(tricycle, () => {
                 startRealDrivingNavigation();
             });
