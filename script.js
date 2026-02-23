@@ -10,6 +10,7 @@ let currentStepIndex = 0;
 let activeRoutePoints = [];
 let activeRouteRemainingPolyline = null;
 let activeRouteCompletedPolyline = null;
+let activeRouteLastClosestIdx = -1;
 let userMarker = null;
 let voiceEnabled = true;
 let navTrackerCollapsed = false;
@@ -522,6 +523,20 @@ function updateMapWithLocation(location) {
     map.setZoom(isMobile ? 17 : 18);
 }
 
+function getUserNavigationMarkerIcon() {
+    if (travelMode === 'WALKING') {
+        return {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: isMobile ? 6 : 7,
+            fillColor: '#0000FF',
+            fillOpacity: 1,
+            strokeWeight: 1,
+            strokeColor: '#ffffff'
+        };
+    }
+    return getSimulationTricycleMarkerIcon();
+}
+
 function preloadPopularRoutes() {
     if (!allLocations.length || !userLocation) return;
     const popularDestinations = allLocations.filter(loc =>
@@ -653,7 +668,7 @@ function startDirections(mode) {
                 userMarker = new google.maps.Marker({
                     position: userLocation, map,
                     title: "You",
-                    icon: { path: google.maps.SymbolPath.CIRCLE, scale: isMobile?6:7, fillColor:'#0000FF', fillOpacity:1, strokeWeight:1, strokeColor:'#ffffff' }
+                    icon: getUserNavigationMarkerIcon()
                 });
                 map.panTo(userLocation);
                 checkUserProgress();
@@ -924,6 +939,7 @@ function clearActiveRoutePolylines() {
         activeRouteCompletedPolyline = null;
     }
     activeRoutePoints = [];
+    activeRouteLastClosestIdx = -1;
 }
 
 function renderActiveRoutePolylines(routeResult) {
@@ -935,6 +951,7 @@ function renderActiveRoutePolylines(routeResult) {
         lat: typeof p.lat === 'function' ? p.lat() : p.lat,
         lng: typeof p.lng === 'function' ? p.lng() : p.lng
     }));
+    activeRouteLastClosestIdx = 0;
 
     activeRouteCompletedPolyline = new google.maps.Polyline({
         path: [activeRoutePoints[0]],
@@ -973,9 +990,17 @@ function updateActiveRouteProgress(position) {
         }
     }
 
+    // Keep route shaving monotonic so GPS jitter does not make the line wobble.
+    if (activeRouteLastClosestIdx >= 0 && closestIdx < activeRouteLastClosestIdx) {
+        closestIdx = activeRouteLastClosestIdx;
+    } else {
+        activeRouteLastClosestIdx = closestIdx;
+    }
+
+    const snappedPoint = activeRoutePoints[closestIdx];
     const completedPath = activeRoutePoints.slice(0, closestIdx + 1);
-    completedPath.push(currentPoint);
-    const remainingPath = [currentPoint].concat(activeRoutePoints.slice(closestIdx + 1));
+    const remainingPath = activeRoutePoints.slice(closestIdx);
+    if (remainingPath.length === 0 && snappedPoint) remainingPath.push(snappedPoint);
     activeRouteCompletedPolyline.setPath(completedPath);
     activeRouteRemainingPolyline.setPath(remainingPath);
 }
@@ -1386,7 +1411,7 @@ function showTricycleArrivedPopup() {
     popup.innerHTML = `
         <div style="margin-bottom:20px;">
             <div style="width:${isMobile?'100px':'80px'};height:${isMobile?'100px':'80px'};background:#28a745;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:${isMobile?'48px':'36px'};"><i class="fas fa-check-circle"></i></div>
-            <h2 style="color:#28a745;margin:0 0 10px 0;">Ž‰ Your Ride Has Arrived!</h2>
+            <h2 style="color:#28a745;margin:0 0 10px 0;">Your Ride Has Arrived!</h2>
             <p style="color:#666;">Your tricycle is now downstairs. Please proceed to meet the driver.</p>
         </div>
         <div style="background:#e9f7ff;padding:${isMobile?'20px':'15px'};border-radius:${isMobile?'15px':'10px'};margin:20px 0;">
@@ -2456,14 +2481,7 @@ function startRealDrivingNavigation() {
                 userMarker = new google.maps.Marker({
                     position: userLocation, map,
                     title: "You (in tricycle)",
-                    icon: {
-                        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                        scale: isMobile ? 5 : 6,
-                        fillColor: '#004080',
-                        fillOpacity: 1,
-                        strokeWeight: 1,
-                        strokeColor: '#ffffff'
-                    }
+                    icon: getUserNavigationMarkerIcon()
                 });
                 map.panTo(userLocation);
                 checkUserProgress();
