@@ -17,6 +17,9 @@ let userMarker = null;
 let voiceEnabled = true;
 let navTrackerCollapsed = false;
 let rideCompletionPopupShown = false;
+let rerouteInProgress = false;
+let lastRerouteAt = 0;
+let lastRerouteLocation = null;
 
 // ============== MOBILE RESPONSIVENESS ==============
 let isMobile = false;
@@ -63,6 +66,10 @@ let kekePoolGroup = {
 let routeCache = {};
 let etaCache = {};
 let popularRoutes = [];
+
+const REROUTE_DEVIATION_KM = 0.08;
+const REROUTE_MIN_INTERVAL_MS = 15000;
+const REROUTE_MIN_MOVE_KM = 0.03;
 
 // USER SESSION MANAGEMENT
 let userSession = {
@@ -121,7 +128,23 @@ function hideControls() {
 
 function showControls() {
     const controls = document.getElementById('controls');
-    if (controls) controls.style.display = 'block';
+    if (!controls) return;
+    if (!shouldShowControls()) {
+        controls.style.display = 'none';
+        return;
+    }
+    controls.style.display = 'block';
+}
+
+function shouldShowControls() {
+    const pendingResume = !!getRideResumeState();
+    const activeRide = userSession?.hasActiveReservation ||
+        ridePhase === 'pickup' ||
+        ridePhase === 'trip' ||
+        ridePhase === 'pool-waiting' ||
+        ridePhase === 'pool-ride' ||
+        ridePhase === 'completed';
+    return !pendingResume && !activeRide;
 }
 
 // ============== RESPONSIVE PANEL POSITIONING ==============
@@ -551,16 +574,22 @@ function preloadPopularRoutes() {
     });
 }
 
-function requestRoute() {
+function requestRoute(options = {}) {
     if (!userLocation || !selectedDestination) { alert("Missing location or destination"); return; }
     const instructionEl = document.getElementById('current-instruction');
-    if (instructionEl) instructionEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Finding best route...';
+    const isReroute = !!options.reroute;
+    if (instructionEl) {
+        instructionEl.innerHTML = isReroute
+            ? '<i class="fas fa-route"></i> Rerouting...'
+            : '<i class="fas fa-spinner fa-spin"></i> Finding best route...';
+    }
     const cacheKey = `${userLocation.lat.toFixed(6)},${userLocation.lng.toFixed(6)}|${selectedDestination.lat},${selectedDestination.lng}|${travelMode}`;
     if (routeCache[cacheKey]) {
         route = routeCache[cacheKey]; currentStepIndex = 0;
         directionsRenderer.setDirections(route);
         renderActiveRoutePolylines(route);
         updateTrackerWithRoute(route); updateInstruction();
+        if (options.onComplete) options.onComplete();
         return;
     }
     directionsService.route({
@@ -576,6 +605,7 @@ function requestRoute() {
             if (instructionEl) instructionEl.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i> Route failed - try again';
             alert("Could not find a route. Please try a different travel mode.");
         }
+        if (options.onComplete) options.onComplete();
     });
 }
 
@@ -618,7 +648,7 @@ function getAccurateETA(origin, destination) {
 
 function hideSplash() {
     document.getElementById("splash").style.display = "none";
-    document.getElementById("controls").style.display = "block";
+    showControls();
     // Called here (not in initMap) so it fires from a user tap.
     // iOS Safari blocks geolocation unless triggered by a direct user gesture.
     requestLocation();
@@ -841,6 +871,38 @@ function updateTrackerWithRoute(routeResult) {
     }
 }
 
+function getDistanceToRouteKm(position) {
+    if (!position || activeRoutePoints.length < 2) return null;
+    const currentPoint = {
+        lat: typeof position.lat === 'function' ? position.lat() : position.lat,
+        lng: typeof position.lng === 'function' ? position.lng() : position.lng
+    };
+    let closestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < activeRoutePoints.length; i++) {
+        const d = calculateHaversineDistance(currentPoint, activeRoutePoints[i]);
+        if (d < closestDist) closestDist = d;
+    }
+    return Number.isFinite(closestDist) ? closestDist : null;
+}
+
+function maybeReroute() {
+    if (!route || !userLocation || !selectedDestination || !travelMode) return;
+    if (rerouteInProgress) return;
+    if (ridePhase !== 'trip' && ridePhase !== 'pool-ride') return;
+    const offRouteKm = getDistanceToRouteKm(userLocation);
+    if (offRouteKm === null || offRouteKm < REROUTE_DEVIATION_KM) return;
+    const now = Date.now();
+    if (now - lastRerouteAt < REROUTE_MIN_INTERVAL_MS) return;
+    if (lastRerouteLocation) {
+        const movedKm = haversineDistance(userLocation, lastRerouteLocation);
+        if (movedKm < REROUTE_MIN_MOVE_KM) return;
+    }
+    rerouteInProgress = true;
+    lastRerouteAt = now;
+    lastRerouteLocation = { lat: userLocation.lat, lng: userLocation.lng };
+    requestRoute({ reroute: true, onComplete: () => { rerouteInProgress = false; } });
+}
+
 function checkUserProgress() {
     if (!route || !userLocation) return;
     if (ridePhase === 'completed') return;
@@ -858,6 +920,7 @@ function checkUserProgress() {
     const progressBar = document.getElementById('progress-bar');
     if (progressBar) progressBar.style.width = Math.min(progressPercent, 100) + '%';
     updateActiveRouteProgress(userLocation);
+    maybeReroute();
     const destination = leg.end_location;
     const distanceToDestinationKm = haversineDistance(userLocation, {
         lat: destination.lat(),
@@ -1063,6 +1126,8 @@ function endNavigation() {
     rideCompletionPopupShown = false;
     directionsRenderer.setDirections({ routes: [] });
     clearActiveRoutePolylines();
+    clearTricycleVisualization();
+    clearTricycleMarkers();
     const tracker = document.getElementById('navigation-tracker');
     if (tracker) tracker.remove();
     const endNavBtn = document.getElementById('end-navigation-btn');
@@ -1544,7 +1609,21 @@ function showRideCompletedPopup() {
 function confirmRideCompletion() {
     if (userSession.vehicleId) {
         fetch(`/api/vehicles/${userSession.vehicleId}/complete-ride`, { method:'POST', headers:{'Content-Type':'application/json'} })
-            .then(response => { if (response.ok) { clearAllDisplays(); alert('Ride completed successfully. Thank you!'); } })
+            .then(response => {
+                if (response.ok) {
+                    userSession = { hasActiveReservation:false, currentReservationId:null, reservationExpiry:null, vehicleId:null, vehicleName:null, vehicleDetails:null, passengerCount:0, pickupETA:null, pickupLocation:null, pickupEtaRemainingSec:null };
+                    ridePhase = 'none';
+                    kekePoolMode = 'solo';
+                    currentPoolId = null;
+                    poolRideData = null;
+                    currentPickupIndex = 0;
+                    kekePoolGroup = { id:null, destination:null, riders:[], maxRiders:4, createdAt:null };
+                    localStorage.removeItem('riderId');
+                    clearPoolSession();
+                    clearAllDisplays();
+                    alert('Ride completed successfully. Thank you!');
+                }
+            })
             .catch(error => console.error('Error:', error));
     }
 }
