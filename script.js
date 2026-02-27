@@ -53,6 +53,7 @@ let poolRideData = null;
 let currentPickupIndex = 0;
 let pickupSimulationInterval = null;
 let poolSyncState = null;
+let poolPickupMarkers = [];
 let serverClockOffsetMs = 0;
 let kekePoolGroup = {
     id: null,
@@ -66,10 +67,12 @@ let kekePoolGroup = {
 let routeCache = {};
 let etaCache = {};
 let popularRoutes = [];
+let poolRouteMetricsCache = {};
 
 const REROUTE_DEVIATION_KM = 0.08;
 const REROUTE_MIN_INTERVAL_MS = 15000;
 const REROUTE_MIN_MOVE_KM = 0.03;
+const POOL_MARKER_REMOVE_DISTANCE_KM = 0.04;
 
 // USER SESSION MANAGEMENT
 let userSession = {
@@ -994,6 +997,200 @@ function haversineDistance(coord1, coord2) {
 
 function calculateHaversineDistance(coord1, coord2) { return haversineDistance(coord1, coord2); }
 
+function estimateMinutesFromDistance(distanceKm, speedKmph) {
+    const speed = speedKmph || 15;
+    return Math.max(1, Math.ceil((distanceKm / speed) * 60));
+}
+
+function getRouteMetricsCacheKey(origin, destination) {
+    if (!origin || !destination) return null;
+    const oLat = Number(origin.lat).toFixed(6);
+    const oLng = Number(origin.lng).toFixed(6);
+    const dLat = Number(destination.lat).toFixed(6);
+    const dLng = Number(destination.lng).toFixed(6);
+    return `${oLat},${oLng}|${dLat},${dLng}|DRIVING|POOL`;
+}
+
+async function getRouteMetrics(origin, destination) {
+    const key = getRouteMetricsCacheKey(origin, destination);
+    if (key && poolRouteMetricsCache[key]) return poolRouteMetricsCache[key];
+    try {
+        const eta = await getAccurateETA(origin, destination);
+        const durationMin = Math.max(1, Math.ceil((eta.value || 0) / 60));
+        const distanceKm = eta.distanceValue ? (eta.distanceValue / 1000) : calculateHaversineDistance(origin, destination);
+        const metrics = { durationMin, distanceKm };
+        if (key) poolRouteMetricsCache[key] = metrics;
+        return metrics;
+    } catch (error) {
+        const distanceKm = calculateHaversineDistance(origin, destination);
+        return { durationMin: estimateMinutesFromDistance(distanceKm, 15), distanceKm };
+    }
+}
+
+function computePickupRouteDistance(tricycle, ridersOrdered) {
+    if (!tricycle || !Array.isArray(ridersOrdered) || ridersOrdered.length === 0) return 0;
+    let total = 0;
+    let prev = { lat: tricycle.lat, lng: tricycle.lng };
+    ridersOrdered.forEach(r => {
+        const d = calculateHaversineDistance(prev, { lat: r.pickupLat, lng: r.pickupLng });
+        total += d;
+        prev = { lat: r.pickupLat, lng: r.pickupLng };
+    });
+    return total;
+}
+
+function getOptimalPickupOrder(tricycle, riders) {
+    if (!tricycle || !Array.isArray(riders) || riders.length <= 2) return riders.slice();
+    const perms = [];
+    const used = Array(riders.length).fill(false);
+    const path = [];
+
+    const backtrack = () => {
+        if (path.length === riders.length) {
+            perms.push(path.slice());
+            return;
+        }
+        for (let i = 0; i < riders.length; i++) {
+            if (used[i]) continue;
+            used[i] = true;
+            path.push(riders[i]);
+            backtrack();
+            path.pop();
+            used[i] = false;
+        }
+    };
+    backtrack();
+
+    let best = perms[0];
+    let bestDist = computePickupRouteDistance(tricycle, best);
+    for (let i = 1; i < perms.length; i++) {
+        const dist = computePickupRouteDistance(tricycle, perms[i]);
+        if (dist < bestDist) { bestDist = dist; best = perms[i]; }
+    }
+    return best.slice();
+}
+
+function buildPickupPlan(tricycle, ridersOrdered) {
+    let cumulativeTime = 0;
+    let prev = { lat: tricycle.lat, lng: tricycle.lng };
+    return ridersOrdered.map((rider, index) => {
+        const distance = calculateHaversineDistance(prev, { lat: rider.pickupLat, lng: rider.pickupLng });
+        const eta = estimateMinutesFromDistance(distance, tricycle.speed || 15);
+        cumulativeTime += eta;
+        prev = { lat: rider.pickupLat, lng: rider.pickupLng };
+        return {
+            ...rider,
+            distance,
+            eta,
+            cumulativeETA: cumulativeTime,
+            pickupOrder: index + 1
+        };
+    });
+}
+
+async function getOptimalPickupOrderGoogle(tricycle, riders) {
+    if (!tricycle || !Array.isArray(riders) || riders.length <= 1) return riders.slice();
+    if (riders.length <= 2) return riders.slice();
+
+    const metricsFromStart = new Map();
+    for (const rider of riders) {
+        const metrics = await getRouteMetrics(
+            { lat: tricycle.lat, lng: tricycle.lng },
+            { lat: rider.pickupLat, lng: rider.pickupLng }
+        );
+        metricsFromStart.set(rider, metrics);
+    }
+
+    const metricsBetween = new Map();
+    for (const from of riders) {
+        for (const to of riders) {
+            if (from === to) continue;
+            const key = `${from.id || from.name || 'from'}|${to.id || to.name || 'to'}`;
+            const metrics = await getRouteMetrics(
+                { lat: from.pickupLat, lng: from.pickupLng },
+                { lat: to.pickupLat, lng: to.pickupLng }
+            );
+            metricsBetween.set(key, metrics);
+        }
+    }
+
+    const perms = [];
+    const used = Array(riders.length).fill(false);
+    const path = [];
+    const backtrack = () => {
+        if (path.length === riders.length) {
+            perms.push(path.slice());
+            return;
+        }
+        for (let i = 0; i < riders.length; i++) {
+            if (used[i]) continue;
+            used[i] = true;
+            path.push(riders[i]);
+            backtrack();
+            path.pop();
+            used[i] = false;
+        }
+    };
+    backtrack();
+
+    let best = perms[0];
+    let bestTime = Number.POSITIVE_INFINITY;
+    for (const perm of perms) {
+        let total = 0;
+        const first = perm[0];
+        total += metricsFromStart.get(first)?.durationMin ?? 0;
+        for (let i = 1; i < perm.length; i++) {
+            const prev = perm[i - 1];
+            const curr = perm[i];
+            const key = `${prev.id || prev.name || 'from'}|${curr.id || curr.name || 'to'}`;
+            total += metricsBetween.get(key)?.durationMin ?? 0;
+        }
+        if (total < bestTime) { bestTime = total; best = perm; }
+    }
+    return best.slice();
+}
+
+async function buildPickupPlanWithGoogle(tricycle, ridersOrdered) {
+    let cumulativeTime = 0;
+    let prev = { lat: tricycle.lat, lng: tricycle.lng };
+    const planned = [];
+    for (let i = 0; i < ridersOrdered.length; i++) {
+        const rider = ridersOrdered[i];
+        const metrics = await getRouteMetrics(prev, { lat: rider.pickupLat, lng: rider.pickupLng });
+        cumulativeTime += metrics.durationMin;
+        planned.push({
+            ...rider,
+            distance: metrics.distanceKm,
+            eta: metrics.durationMin,
+            cumulativeETA: cumulativeTime,
+            pickupOrder: i + 1
+        });
+        prev = { lat: rider.pickupLat, lng: rider.pickupLng };
+    }
+    return planned;
+}
+
+async function computeTotalPoolTime(tricycle, ridersPlanned, destination) {
+    if (!Array.isArray(ridersPlanned) || ridersPlanned.length === 0 || !destination) return 0;
+    const last = ridersPlanned[ridersPlanned.length - 1];
+    let toDestMinutes = 0;
+    try {
+        const destMetrics = await getRouteMetrics(
+            { lat: last.pickupLat, lng: last.pickupLng },
+            { lat: destination.lat, lng: destination.lng }
+        );
+        toDestMinutes = destMetrics.durationMin;
+    } catch (error) {
+        const distanceToDest = calculateHaversineDistance(
+            { lat: last.pickupLat, lng: last.pickupLng },
+            { lat: destination.lat, lng: destination.lng }
+        );
+        toDestMinutes = estimateMinutesFromDistance(distanceToDest, tricycle?.speed || 15);
+    }
+    const pickupMinutes = ridersPlanned[ridersPlanned.length - 1]?.cumulativeETA || 0;
+    return pickupMinutes + toDestMinutes;
+}
+
 function clearActiveRoutePolylines() {
     if (activeRouteRemainingPolyline) {
         activeRouteRemainingPolyline.setMap(null);
@@ -1128,6 +1325,7 @@ function endNavigation() {
     clearActiveRoutePolylines();
     clearTricycleVisualization();
     clearTricycleMarkers();
+    clearPoolPickupMarkers();
     const tracker = document.getElementById('navigation-tracker');
     if (tracker) tracker.remove();
     const endNavBtn = document.getElementById('end-navigation-btn');
@@ -1358,6 +1556,63 @@ function showTricycleMarkers(tricycles) {
 function clearTricycleMarkers() {
     tricycleMarkers.forEach(item => { if (item.marker) item.marker.setMap(null); });
     tricycleMarkers = [];
+}
+
+function clearPoolPickupMarkers() {
+    poolPickupMarkers.forEach(item => { if (item.marker) item.marker.setMap(null); });
+    poolPickupMarkers = [];
+}
+
+function renderPoolPickupMarkers(riders) {
+    clearPoolPickupMarkers();
+    if (!Array.isArray(riders) || riders.length === 0 || !map) return;
+    riders.forEach((rider, index) => {
+        const labelText = String(rider.pickupOrder || (index + 1));
+        const marker = new google.maps.Marker({
+            position: { lat: rider.pickupLat, lng: rider.pickupLng },
+            map,
+            title: rider.name || rider.userName || `Rider ${index + 1}`,
+            label: { text: labelText, color: 'white', fontWeight: 'bold', fontSize: isMobile ? '11px' : '12px' },
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: isMobile ? 9 : 8,
+                fillColor: '#22c55e',
+                fillOpacity: 0.95,
+                strokeColor: '#ffffff',
+                strokeWeight: 2
+            }
+        });
+        poolPickupMarkers.push({ id: rider.id || `${index}`, marker, rider });
+    });
+}
+
+function removePoolPickupMarker(rider) {
+    if (!rider) return;
+    const idx = poolPickupMarkers.findIndex(item => item.id === rider.id);
+    if (idx >= 0) {
+        const item = poolPickupMarkers[idx];
+        if (item.marker) item.marker.setMap(null);
+        poolPickupMarkers.splice(idx, 1);
+        return;
+    }
+    // Fallback: remove nearest marker to the pickup point.
+    const target = { lat: rider.pickupLat, lng: rider.pickupLng };
+    let bestIdx = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < poolPickupMarkers.length; i++) {
+        const markerPos = poolPickupMarkers[i].marker?.getPosition?.();
+        if (!markerPos) continue;
+        const d = calculateHaversineDistance(
+            { lat: markerPos.lat(), lng: markerPos.lng() },
+            target
+        );
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestIdx >= 0 && bestDist <= POOL_MARKER_REMOVE_DISTANCE_KM) {
+        const item = poolPickupMarkers[bestIdx];
+        if (item.marker) item.marker.setMap(null);
+        poolPickupMarkers.splice(bestIdx, 1);
+    }
 }
 
 function selectTricycle(tricycleId) {
@@ -1987,7 +2242,7 @@ function startReservationTracking(reservationId) {
                 ? `${mins} min`
                 : etaSeconds > 0
                     ? `${mins}:${String(secs).padStart(2,'0')}`
-                    : 'š— Arriving now!';
+                    : 'Arriving now!';
         }
         if (etaSeconds === 0) {
             clearInterval(reservationTimer);
@@ -2112,7 +2367,7 @@ function displayKekePoolGroup() {
         </div>
         <div style="margin:15px 0;">${ridersHtml}</div>
         ${ridersCount>=4?
-            '<div style="background:#d4edda;padding:15px;border-radius:10px;text-align:center;color:#155724;font-weight:bold;">Ž‰ Pool is ready! Starting ride automatically...</div>':
+            '<div style="background:#d4edda;padding:15px;border-radius:10px;text-align:center;color:#155724;font-weight:bold;">Pool is ready! Starting ride automatically...</div>':
             '<p style="text-align:center;color:#666;font-size:0.9em;padding:10px;background:#f8f9fa;border-radius:8px;"><i class="fas fa-hourglass-half"></i> Pool will start automatically when 4 riders join</p>'
         }
         <style>@keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}</style>`;
@@ -2218,17 +2473,17 @@ function handlePoolJoinFallback(riderId, userName, location) {
 // ============================================
 // CALCULATE POOL ETA AND START RIDE
 // ============================================
-function calculatePoolETAAndStart() {
+async function calculatePoolETAAndStart() {
     if (currentPoolId && !String(currentPoolId).startsWith('local_pool_')) {
-        fetch(`/api/kekepool/${currentPoolId}`)
-            .then(res => res.json())
-            .then(poolState => {
+        try {
+            const res = await fetch(`/api/kekepool/${currentPoolId}`);
+            const poolState = await res.json();
                 syncServerClock(poolState.serverTime);
                 kekePoolGroup = poolState;
                 const optimizedRoute = poolState.optimizedRoute;
                 const assignedVehicle = poolState.assignedVehicle || optimizedRoute?.vehicle || selectedTricycle;
                 if (!optimizedRoute || !assignedVehicle) {
-                    calculatePoolETAAndStartLocal();
+                    await calculatePoolETAAndStartLocal();
                     return;
                 }
 
@@ -2245,12 +2500,21 @@ function calculatePoolETAAndStart() {
                         pickupLng: rider.pickupLng ?? plan.pickupLng ?? rider.lng,
                         eta: rider.eta ?? plan.legEtaMinutes ?? 1,
                         cumulativeETA: rider.cumulativeETA ?? plan.cumulativeETA ?? (rider.eta ?? 1),
-                        pickupOrder: rider.pickupOrder ?? plan.pickupOrder ?? (index + 1),
+                        pickupOrder: rider.pickupOrder ?? plan.pickupOrder ?? null,
                         etaAt: plan.etaAt || null
                     };
-                }).sort((a, b) => (a.pickupOrder || 0) - (b.pickupOrder || 0));
+                });
 
-                const totalTime = poolState.syncState?.totalTimeMinutes || optimizedRoute.totalTime || 0;
+                let orderedRiders = riders;
+                const hasPickupOrder = orderedRiders.some(r => Number.isFinite(r.pickupOrder));
+                if (hasPickupOrder) {
+                    orderedRiders = orderedRiders.slice().sort((a, b) => (a.pickupOrder || 0) - (b.pickupOrder || 0));
+                } else {
+                    orderedRiders = await getOptimalPickupOrderGoogle(assignedVehicle, orderedRiders);
+                }
+                orderedRiders = await buildPickupPlanWithGoogle(assignedVehicle, orderedRiders);
+
+                const totalTime = await computeTotalPoolTime(assignedVehicle, orderedRiders, selectedDestination);
                 poolSyncState = poolState.syncState || null;
                 ridePhase = 'pool-ride';
                 persistPoolSession();
@@ -2258,7 +2522,7 @@ function calculatePoolETAAndStart() {
 
                 poolRideData = {
                     tricycle: assignedVehicle,
-                    riders,
+                    riders: orderedRiders,
                     totalTime,
                     destination: selectedDestination,
                     syncState: poolSyncState
@@ -2276,23 +2540,24 @@ function calculatePoolETAAndStart() {
                 hideControls();
                 hideEndNavigationButton();
 
-                if (poolSyncState?.samePickupLocation && riders.length > 0) {
-                    handleGroupPickup(assignedVehicle, riders[0], poolSyncState);
+                if (poolSyncState?.samePickupLocation && orderedRiders.length > 0) {
+                    renderPoolPickupMarkers([orderedRiders[0]]);
+                    handleGroupPickup(assignedVehicle, orderedRiders[0], poolSyncState);
                 } else {
+                    renderPoolPickupMarkers(orderedRiders);
                     showPoolETASummaryAndStartSimulation();
                 }
-            })
-            .catch(error => {
-                console.error('Failed to load server pool sync state, using local fallback:', error);
-                calculatePoolETAAndStartLocal();
-            });
+        } catch (error) {
+            console.error('Failed to load server pool sync state, using local fallback:', error);
+            await calculatePoolETAAndStartLocal();
+        }
         return;
     }
 
-    calculatePoolETAAndStartLocal();
+    await calculatePoolETAAndStartLocal();
 }
 
-function calculatePoolETAAndStartLocal() {
+async function calculatePoolETAAndStartLocal() {
     console.log('Pool is full €” calculating ETAs and starting simulation');
     ridePhase = 'pool-ride';
     poolSyncState = null;
@@ -2335,6 +2600,7 @@ function calculatePoolETAAndStartLocal() {
 
     if (allAtSameLocation) {
         console.log('All riders at same location €” group pickup mode');
+        renderPoolPickupMarkers([rawRiders[0]]);
         handleGroupPickup(selectedTricycleForPool, rawRiders[0]);
         return;
     }
@@ -2356,31 +2622,21 @@ function calculatePoolETAAndStartLocal() {
         pickupLng: r.pickupLng + campusSpread[i % campusSpread.length].dlng
     })) : rawRiders;
 
-    // Sort by distance from tricycle (nearest first)
-    const ridersWithDistance = normalizedRiders.map(rider => {
-        const distance = calculateHaversineDistance(
-            { lat: selectedTricycleForPool.lat, lng: selectedTricycleForPool.lng },
-            { lat: rider.pickupLat, lng: rider.pickupLng }
-        );
-        return { ...rider, distance, eta: Math.max(1, Math.ceil((distance / (selectedTricycleForPool.speed || 15)) * 60)) };
-    });
-    ridersWithDistance.sort((a, b) => a.distance - b.distance);
-
-    let cumulativeTime = 0;
-    const ridersWithCumulativeETA = ridersWithDistance.map((rider, index) => {
-        cumulativeTime += rider.eta;
-        return { ...rider, cumulativeETA: cumulativeTime, pickupOrder: index + 1 };
-    });
-
-    const lastRider = ridersWithCumulativeETA[ridersWithCumulativeETA.length - 1];
-    const distanceToDest = calculateHaversineDistance(
-        { lat: lastRider.pickupLat, lng: lastRider.pickupLng },
-        { lat: selectedDestination.lat, lng: selectedDestination.lng }
-    );
-    const timeToDest = Math.max(1, Math.ceil((distanceToDest / (selectedTricycleForPool.speed || 15)) * 60));
-    const totalTime = cumulativeTime + timeToDest;
+    // Find the shortest pickup order using Google route durations
+    let orderedRiders = [];
+    let ridersWithCumulativeETA = [];
+    try {
+        orderedRiders = await getOptimalPickupOrderGoogle(selectedTricycleForPool, normalizedRiders);
+        ridersWithCumulativeETA = await buildPickupPlanWithGoogle(selectedTricycleForPool, orderedRiders);
+    } catch (error) {
+        console.warn('Google pickup optimization failed, using straight-line fallback:', error);
+        orderedRiders = getOptimalPickupOrder(selectedTricycleForPool, normalizedRiders);
+        ridersWithCumulativeETA = buildPickupPlan(selectedTricycleForPool, orderedRiders);
+    }
+    const totalTime = await computeTotalPoolTime(selectedTricycleForPool, ridersWithCumulativeETA, selectedDestination);
 
     poolRideData = { tricycle: selectedTricycleForPool, riders: ridersWithCumulativeETA, totalTime, destination: selectedDestination, syncState: null };
+    renderPoolPickupMarkers(ridersWithCumulativeETA);
 
     userSession.hasActiveReservation = true;
     userSession.vehicleDetails = { driver: selectedTricycleForPool.driver, phone: selectedTricycleForPool.phone };
@@ -2444,7 +2700,7 @@ function handleGroupPickup(tricycle, sharedRider, syncState = null) {
             </div>
             <!-- Tricycle incoming banner -->
             <div style="background:linear-gradient(135deg,#004080,#0066cc);color:white;padding:${isMobile?'18px':'14px'};border-radius:${isMobile?'15px':'10px'};margin-bottom:15px;text-align:center;">
-                <div style="font-size:${isMobile?'2em':'1.6em'};margin-bottom:6px;animation:bounce 1s infinite;">›º</div>
+                <div style="font-size:${isMobile?'2em':'1.6em'};margin-bottom:6px;animation:bounce 1s infinite;">GO</div>
                 <div style="font-weight:bold;font-size:${isMobile?'1.1em':'1em'};">${tricycle.name} is on the way!</div>
                 <div style="font-size:${isMobile?'2.2em':'1.8em'};font-weight:bold;margin:8px 0;" id="group-eta-display">${initialDurationMinutes} min</div>
                 <div style="font-size:${isMobile?'0.9em':'0.85em'};opacity:0.85;">Arriving to pick up all ${kekePoolGroup.riders.length} riders</div>
@@ -2498,7 +2754,7 @@ function handleGroupPickup(tricycle, sharedRider, syncState = null) {
         const el = document.getElementById('group-eta-display');
         if (el) {
             const m = Math.floor(etaSeconds / 60), s = etaSeconds % 60;
-            el.textContent = etaSeconds > 60 ? `${m} min` : etaSeconds > 0 ? `${m}:${String(s).padStart(2,'0')}` : '›º Arriving!';
+            el.textContent = etaSeconds > 60 ? `${m} min` : etaSeconds > 0 ? `${m}:${String(s).padStart(2,'0')}` : 'Arriving!';
         }
         if (etaSeconds === 0) { clearInterval(reservationTimer); reservationTimer = null; }
     }, 1000);
@@ -2510,6 +2766,7 @@ function handleGroupPickup(tricycle, sharedRider, syncState = null) {
         initialDurationMinutes,
         `Picking up all ${kekePoolGroup.riders.length} riders`,
         () => {
+            clearPoolPickupMarkers();
             // All riders at same spot show "everyone aboard" popup then launch real nav
             showGroupAllAboardPopup(tricycle, () => {
                 startRealDrivingNavigation();
@@ -2524,7 +2781,7 @@ function showGroupAllAboardPopup(tricycle, onStart) {
     popup.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:${isMobile?'30px 25px':'28px'};border-radius:${isMobile?'20px':'15px'};box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;max-width:${isMobile?'92%':'400px'};width:90%;text-align:center;border:3px solid #28a745;`;
     const riderCount = kekePoolGroup.riders.length;
     popup.innerHTML = `
-        <div style="width:${isMobile?'90px':'70px'};height:${isMobile?'90px':'70px'};background:#28a745;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:${isMobile?'44px':'34px'};">›º</div>
+        <div style="width:${isMobile?'90px':'70px'};height:${isMobile?'90px':'70px'};background:#28a745;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:${isMobile?'44px':'34px'};">OK</div>
         <h2 style="color:#28a745;margin:0 0 10px 0;">Tricycle Arrived!</h2>
         <p style="color:#333;margin-bottom:6px;">All <strong>${riderCount} riders</strong> are at this location.</p>
         <p style="color:#666;font-size:0.95em;margin-bottom:20px;">Everyone boards now €” heading to your destination!</p>
@@ -2555,10 +2812,11 @@ function showGroupAllAboardPopup(tricycle, onStart) {
 // (called after ALL riders are picked up)
 // ============================================
 function startRealDrivingNavigation() {
-    console.log('All riders aboard €” starting real Google Maps driving navigation');
+    console.log('All riders aboard starting real Google Maps driving navigation');
     ridePhase = 'pool-ride';
     rideCompletionPopupShown = false;
     clearTricycleMarkers();
+    clearPoolPickupMarkers();
 
     // Hide tracking panel; navigation tracker will take over
     const trackingPanel = document.getElementById('tracking-panel');
@@ -2788,7 +3046,7 @@ function startFirstPickup() {
         <div style="background:${firstIsMe?'#d4edda':'#f8f9fa'};border-radius:10px;padding:${isMobile?'18px':'14px'};">
             ${firstIsMe ? `
             <div style="text-align:center;margin-bottom:12px;">
-                <div style="font-size:${isMobile?'2em':'1.6em'};animation:bounce 0.7s infinite;">›º</div>
+            <div style="font-size:${isMobile?'2em':'1.6em'};animation:bounce 0.7s infinite;">GO</div>
                 <div style="font-weight:bold;color:#155724;font-size:${isMobile?'1.1em':'1em'};margin-top:8px;">The tricycle is coming for YOU first!</div>
                 <div style="color:#155724;font-size:0.9em;margin-top:4px;">Head to your pickup point €” you're first in queue.</div>
                 <div style="margin-top:10px;font-size:${isMobile?'1.3em':'1.1em'};font-weight:bold;color:#155724;">ETA: ${firstRider.eta} min</div>
@@ -2833,15 +3091,15 @@ function showNextRiderNotification(nextRider, prevRiderName, etaMinutes) {
 
     note.innerHTML = isMyTurn ? `
         <div style="background:white;border-radius:${isMobile?'25px':'18px'};padding:${isMobile?'35px 28px':'28px'};max-width:${isMobile?'95%':'420px'};width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:slideUp 0.4s ease;">
-            <div style="font-size:${isMobile?'4em':'3.5em'};margin-bottom:12px;animation:bounce 0.6s infinite;">›º</div>
+                <div style="font-size:${isMobile?'4em':'3.5em'};margin-bottom:12px;animation:bounce 0.6s infinite;">GO</div>
             <div style="background:#28a745;color:white;border-radius:50px;padding:10px 24px;font-size:${isMobile?'1em':'0.9em'};font-weight:bold;display:inline-block;margin-bottom:18px;animation:pulse 1s infinite;">
-                š¨ IT'S YOUR TURN! š¨
+                IT'S YOUR TURN!
             </div>
             <h2 style="color:#004080;margin:0 0 10px 0;font-size:${isMobile?'1.6em':'1.5em'};">The tricycle is coming for YOU!</h2>
             <p style="color:#333;font-size:${isMobile?'1.1em':'1em'};margin-bottom:8px;"><strong>${prevRiderName}</strong> just boarded.</p>
             <p style="color:#004080;font-size:${isMobile?'1.05em':'1em'};margin-bottom:18px;font-weight:500;">Please head to your pickup spot and be ready €” the driver is on the way!</p>
             <div style="background:#d4edda;border-radius:12px;padding:14px;margin-bottom:22px;border:2px solid #28a745;">
-                <div style="font-size:0.85em;color:#155724;margin-bottom:4px;font-weight:bold;">• Arriving in approximately</div>
+                <div style="font-size:0.85em;color:#155724;margin-bottom:4px;font-weight:bold;">Arriving in approximately</div>
                 <div style="font-size:${isMobile?'2.2em':'2em'};font-weight:bold;color:#155724;">${etaMinutes} min</div>
             </div>
             <div style="display:flex;gap:12px;">
@@ -2861,9 +3119,9 @@ function showNextRiderNotification(nextRider, prevRiderName, etaMinutes) {
             @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
         </style>` : `
         <div style="background:white;border-radius:${isMobile?'25px':'18px'};padding:${isMobile?'35px 28px':'28px'};max-width:${isMobile?'95%':'420px'};width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:slideUp 0.4s ease;">
-            <div style="font-size:${isMobile?'3.5em':'3em'};margin-bottom:12px;">›º</div>
+            <div style="font-size:${isMobile?'3.5em':'3em'};margin-bottom:12px;">GO</div>
             <div style="background:#28a745;color:white;border-radius:50px;padding:8px 20px;font-size:0.85em;font-weight:bold;display:inline-block;margin-bottom:16px;">
-                Rider ${currentPickupIndex} of ${poolRideData.riders.length} picked up œ“
+                Rider ${currentPickupIndex} of ${poolRideData.riders.length} picked up
             </div>
             <h2 style="color:#004080;margin:0 0 8px 0;font-size:${isMobile?'1.5em':'1.4em'};">${prevRiderName} just boarded!</h2>
             <p style="color:#333;font-size:${isMobile?'1.1em':'1em'};margin-bottom:20px;">
@@ -2921,10 +3179,10 @@ function showPickedUpConfirmation(rider, onConfirm) {
                 The tricycle has reached<br>
                 <strong style="color:#004080;font-size:1.1em;">${rider.name || 'Rider'}</strong>
             </p>
-            <p style="color:#666;font-size:0.9em;margin-bottom:${nextIsMe?'10px':'22px'};">Rider is boarding now€¦</p>
+            <p style="color:#666;font-size:0.9em;margin-bottom:${nextIsMe?'10px':'22px'};">Rider is boarding now...</p>
             ${nextIsMe ? `
             <div style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:12px;margin-bottom:18px;">
-                <div style="font-weight:bold;color:#856404;font-size:${isMobile?'1em':'0.95em'};">š ï¸ Next stop is YOU!</div>
+                <div style="font-weight:bold;color:#856404;font-size:${isMobile?'1em':'0.95em'};">Next stop is YOU!</div>
                 <div style="color:#856404;font-size:0.9em;margin-top:4px;">Start heading to your pickup spot now.</div>
             </div>` : ''}
             <button onclick="_onPickupConfirmTap()"
@@ -2949,6 +3207,7 @@ function moveToNextPickup() {
 
     const justPickedUp = poolRideData.riders[currentPickupIndex];
     currentPickupIndex++;
+    removePoolPickupMarker(justPickedUp);
 
     if (currentPickupIndex < poolRideData.riders.length) {
         // ”€”€ More riders to pick up €” continue simulation ”€”€
@@ -2968,12 +3227,16 @@ function moveToNextPickup() {
                     <div style="background:#e9ecef;border-radius:50px;height:8px;margin-bottom:15px;overflow:hidden;">
                         <div style="background:#004080;height:100%;width:${Math.round((currentPickupIndex / poolRideData.riders.length) * 100)}%;border-radius:50px;transition:width 0.5s;"></div>
                     </div>
+                    <div style="display:flex;justify-content:space-between;background:#ffffff;padding:10px;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:15px;">
+                        <div><div style="font-size:0.8em;color:#666;">Total Trip Time</div><div style="font-size:1.3em;font-weight:bold;color:#28a745;">${poolRideData.totalTime} min</div></div>
+                        <div><div style="font-size:0.8em;color:#666;">Next Pickup ETA</div><div style="font-size:1.3em;font-weight:bold;color:#004080;">${nextRider.eta} min</div></div>
+                    </div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:15px;">
                         ${poolRideData.riders.map((r, i) => `
                             <div style="padding:4px 10px;border-radius:50px;font-size:0.8em;font-weight:bold;
                                 background:${i < currentPickupIndex ? '#28a745' : i === currentPickupIndex ? '#ffc107' : '#e9ecef'};
                                 color:${i < currentPickupIndex ? 'white' : i === currentPickupIndex ? '#333' : '#666'};">
-                                ${i < currentPickupIndex ? 'œ“ ' : i === currentPickupIndex ? '›º ' : ''}${r.name || 'Rider ' + (i+1)}
+                                ${i < currentPickupIndex ? 'Done: ' : i === currentPickupIndex ? 'Now: ' : ''}${r.name || 'Rider ' + (i+1)}
                             </div>`).join('')}
                     </div>
                     <div style="background:#fff3cd;border-radius:${isMobile?'12px':'10px'};padding:${isMobile?'15px':'12px'};margin-bottom:12px;">
@@ -2993,7 +3256,7 @@ function moveToNextPickup() {
                     <div id="tracking-status">
                         <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:center;">
                             <i class="fas fa-circle-notch fa-spin" style="color:#004080;font-size:${isMobile?'28px':'22px'};"></i>
-                            <p style="margin-top:12px;font-weight:bold;color:#004080;">En route to ${nextRider.name || 'next rider'}€¦</p>
+                            <p style="margin-top:12px;font-weight:bold;color:#004080;">En route to ${nextRider.name || 'next rider'}...</p>
                             <p style="color:#28a745;font-weight:bold;font-size:${isMobile?'1.2em':'1.1em'};margin-top:4px;">ETA: ${nextRider.eta} min</p>
                         </div>
                     </div>
@@ -3039,7 +3302,7 @@ function showAllRidersAboardPopup(lastRider, onStart) {
     popup.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:${isMobile?'30px 25px':'28px'};border-radius:${isMobile?'20px':'15px'};box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;max-width:${isMobile?'92%':'420px'};width:90%;text-align:center;border:3px solid #28a745;`;
     const dest = (poolRideData && poolRideData.destination) || selectedDestination;
     popup.innerHTML = `
-        <div style="width:${isMobile?'90px':'72px'};height:${isMobile?'90px':'72px'};background:#28a745;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:${isMobile?'44px':'34px'};">Ž‰</div>
+        <div style="width:${isMobile?'90px':'72px'};height:${isMobile?'90px':'72px'};background:#28a745;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:${isMobile?'44px':'34px'};">OK</div>
         <h2 style="color:#28a745;margin:0 0 8px 0;">All Riders Aboard!</h2>
         <p style="color:#333;margin-bottom:6px;">All <strong>${poolRideData.riders.length} riders</strong> have been picked up.</p>
         <p style="color:#666;font-size:0.95em;margin-bottom:18px;">Switching to <strong>Google Maps navigation</strong> to reach your destination.</p>
@@ -3557,6 +3820,7 @@ function clearAllDisplays() {
     clearTricycleVisualization();
     clearActiveRoutePolylines();
     clearTricycleMarkers();
+    clearPoolPickupMarkers();
     document.getElementById("mode-selector").classList.add("hidden");
     if (showPanelBtn) showPanelBtn.style.display = 'none';
     route = null; currentStepIndex = 0; travelMode = null; navTrackerCollapsed = false;
