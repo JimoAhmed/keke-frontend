@@ -50,6 +50,10 @@ let poolRideData = null;
 let currentPickupIndex = 0;
 let pickupSimulationInterval = null;
 let poolSyncState = null;
+let poolPickupMarkers = [];
+let poolProgressPollInterval = null;
+let poolNavigationStarted = false;
+let lastAppliedPickupIndex = -1;
 let serverClockOffsetMs = 0;
 let kekePoolGroup = {
     id: null,
@@ -63,6 +67,7 @@ let kekePoolGroup = {
 let routeCache = {};
 let etaCache = {};
 let popularRoutes = [];
+let poolRouteMetricsCache = {};
 
 // USER SESSION MANAGEMENT
 let userSession = {
@@ -931,6 +936,177 @@ function haversineDistance(coord1, coord2) {
 
 function calculateHaversineDistance(coord1, coord2) { return haversineDistance(coord1, coord2); }
 
+function estimateMinutesFromDistance(distanceKm, speedKmph) {
+    const speed = speedKmph || 15;
+    return Math.max(1, Math.ceil((distanceKm / speed) * 60));
+}
+
+function isPoolLeader() {
+    const leaderId = poolRideData?.riders?.[0]?.id;
+    const myId = localStorage.getItem('riderId');
+    return leaderId && myId && leaderId === myId;
+}
+
+function getPoolLegTimes(idx) {
+    if (!poolSyncState || !poolSyncState.pickupPlan || poolSyncState.pickupPlan.length === 0) return {};
+    const plan = poolSyncState.pickupPlan.slice().sort((a, b) => (a.pickupOrder || 0) - (b.pickupOrder || 0));
+    const entry = plan[idx];
+    if (!entry) return {};
+    const etaAtMs = entry.etaAt ? new Date(entry.etaAt).getTime() : null;
+    const legMinutes = entry.legEtaMinutes || entry.eta || null;
+    let legStartedAtMs = null;
+    if (idx === 0) {
+        legStartedAtMs = poolSyncState.rideStartAt ? new Date(poolSyncState.rideStartAt).getTime() : null;
+    } else {
+        const prev = plan[idx - 1];
+        legStartedAtMs = prev?.etaAt ? new Date(prev.etaAt).getTime() : null;
+    }
+    return { etaAtMs, legStartedAtMs, legMinutes };
+}
+
+function postPoolProgress(progress) {
+    if (!currentPoolId || !progress) return;
+    const riderId = localStorage.getItem('riderId');
+    fetch(`/api/kekepool/${currentPoolId}/progress`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+            riderId,
+            currentPickupIndex: progress.currentPickupIndex,
+            phase: progress.phase,
+            legStartedAt: progress.legStartedAt
+        })
+    }).catch(error => console.error('Progress update failed:', error));
+}
+
+function startPoolProgressSync() {
+    if (!currentPoolId) return;
+    if (poolProgressPollInterval) { clearInterval(poolProgressPollInterval); poolProgressPollInterval=null; }
+    const poll = () => {
+        fetch(`/api/kekepool/${currentPoolId}/progress`)
+            .then(res => res.json())
+            .then(data => {
+                syncServerClock(data.serverTime);
+                if (data.syncState) poolSyncState = data.syncState;
+                if (data.progress) applyPoolProgress(data.progress);
+            })
+            .catch(error => console.error('Pool progress sync failed:', error));
+    };
+    poll();
+    poolProgressPollInterval = setInterval(poll, 2000);
+}
+
+function renderPoolTrackingPanelForNextPickup(nextRider) {
+    const trackingPanel = document.getElementById('tracking-panel');
+    if (!trackingPanel || !poolRideData) return;
+    trackingPanel.innerHTML = `
+        <div style="padding:${isMobile?'20px':'15px'};">
+            ${isMobile?'<div style="width:50px;height:5px;background:#ccc;border-radius:3px;margin:0 auto 15px;"></div>':''}
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h3 style="margin:0;color:#004080;font-size:${isMobile?'1.2em':'1.05em'};"><i class="fas fa-shuttle-van"></i> Pickup ${currentPickupIndex+1} of ${poolRideData.riders.length}</h3>
+                <button onclick="hideTrackingPanel()" style="padding:${isMobile?'12px 18px':'8px 12px'};background:#6c757d;color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'0.9em':'0.8em'};"><i class="fas fa-eye-slash"></i> Hide</button>
+            </div>
+            <div style="background:#e9ecef;border-radius:50px;height:8px;margin-bottom:15px;overflow:hidden;">
+                <div style="background:#004080;height:100%;width:${Math.round((currentPickupIndex / poolRideData.riders.length) * 100)}%;border-radius:50px;transition:width 0.5s;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;background:#ffffff;padding:10px;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:15px;">
+                <div><div style="font-size:0.8em;color:#666;">Total Trip Time</div><div style="font-size:1.3em;font-weight:bold;color:#28a745;">${poolRideData.totalTime} min</div></div>
+                <div><div style="font-size:0.8em;color:#666;">Next Pickup ETA</div><div style="font-size:1.3em;font-weight:bold;color:#004080;">${nextRider.eta} min</div></div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:15px;">
+                ${poolRideData.riders.map((r, i) => `
+                    <div style="padding:4px 10px;border-radius:50px;font-size:0.8em;font-weight:bold;
+                        background:${i < currentPickupIndex ? '#28a745' : i === currentPickupIndex ? '#ffc107' : '#e9ecef'};
+                        color:${i < currentPickupIndex ? 'white' : i === currentPickupIndex ? '#333' : '#666'};">
+                        ${i < currentPickupIndex ? 'Done: ' : i === currentPickupIndex ? 'Now: ' : ''}${r.name || 'Rider ' + (i+1)}
+                    </div>`).join('')}
+            </div>
+            <div style="background:#fff3cd;border-radius:${isMobile?'12px':'10px'};padding:${isMobile?'15px':'12px'};margin-bottom:12px;">
+                <div style="font-size:0.8em;color:#856404;margin-bottom:5px;font-weight:bold;">NOW HEADING TO</div>
+                <div style="font-size:${isMobile?'1.1em':'1em'};font-weight:bold;color:#333;">${nextRider.name || 'Rider ' + (currentPickupIndex+1)}</div>
+            </div>
+            <div style="background:#e9f7ff;border-radius:${isMobile?'12px':'10px'};padding:${isMobile?'14px':'10px'};margin-bottom:15px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <i class="fas fa-user" style="color:#004080;"></i>
+                    <span style="font-weight:bold;">${poolRideData.tricycle.driver}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <i class="fas fa-phone" style="color:#004080;"></i>
+                    <span>${poolRideData.tricycle.phone}</span>
+                </div>
+            </div>
+            <div id="tracking-status">
+                <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:center;">
+                    <i class="fas fa-circle-notch fa-spin" style="color:#004080;font-size:${isMobile?'28px':'22px'};"></i>
+                    <p style="margin-top:12px;font-weight:bold;color:#004080;">En route to ${nextRider.name || 'next rider'}...</p>
+                    <p style="color:#28a745;font-weight:bold;font-size:${isMobile?'1.2em':'1.1em'};margin-top:4px;">ETA: ${nextRider.eta} min</p>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:15px;">
+                <button onclick="centerOnTricycle()" style="flex:1;padding:${isMobile?'13px':'10px'};background:#17a2b8;color:white;border:none;border-radius:${isMobile?'10px':'8px'};cursor:pointer;font-weight:bold;">
+                    <i class="fas fa-crosshairs"></i> Track
+                </button>
+                <button onclick="cancelReservationAndClear()" style="flex:1;padding:${isMobile?'13px':'10px'};background:#dc3545;color:white;border:none;border-radius:${isMobile?'10px':'8px'};cursor:pointer;font-weight:bold;">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+            </div>
+        </div>`;
+}
+
+function simulatePickupLeg(originPoint, nextRider, etaMinutes, legStartedAt, previousRiderName = 'Previous rider', etaAtMs = null) {
+    if (!originPoint || !nextRider) return;
+    let remaining = etaMinutes;
+    if (etaAtMs) {
+        remaining = Math.max(1, Math.ceil((etaAtMs - getSyncedNowMs()) / 60000));
+    } else if (legStartedAt) {
+        const startedAtMs = new Date(legStartedAt).getTime();
+        const elapsedMin = Math.max(0, (getSyncedNowMs() - startedAtMs) / 60000);
+        remaining = Math.max(1, Math.ceil(etaMinutes - elapsedMin));
+    }
+    if (tricycleSimulationInterval) { clearInterval(tricycleSimulationInterval); tricycleSimulationInterval = null; }
+    if (tricycleRoutePolyline) tricycleRoutePolyline.setMap(null);
+    if (tricycleMarker) tricycleMarker.setMap(null);
+
+    simulateTricycleRoute(
+        originPoint,
+        { lat: nextRider.pickupLat, lng: nextRider.pickupLng },
+        remaining,
+        `Picking up ${nextRider.name || nextRider.userName || 'Rider'}`,
+        () => {
+            if (isPoolLeader()) moveToNextPickup();
+        }
+    );
+    if (lastAppliedPickupIndex !== currentPickupIndex) {
+        showNextRiderNotification(nextRider, previousRiderName, nextRider.eta);
+    }
+}
+
+function applyPoolProgress(progress) {
+    if (!poolRideData || !progress) return;
+    const riders = poolRideData.riders || [];
+    const phase = progress.phase || 'pickup';
+    if (phase === 'to_destination' || progress.currentPickupIndex >= riders.length) {
+        if (!poolNavigationStarted) {
+            poolNavigationStarted = true;
+            startRealDrivingNavigation();
+        }
+        return;
+    }
+    const idx = Math.max(0, Math.min(progress.currentPickupIndex, riders.length - 1));
+    currentPickupIndex = idx;
+    const nextRider = riders[idx];
+    const prev = idx === 0 ? null : riders[idx - 1];
+    const originPoint = idx === 0
+        ? { lat: poolRideData.tricycle.lat, lng: poolRideData.tricycle.lng }
+        : { lat: prev.pickupLat, lng: prev.pickupLng };
+    const previousRiderName = idx === 0 ? 'Start' : (prev.name || prev.userName || 'Previous rider');
+    const legTimes = getPoolLegTimes(idx);
+    const legStartedAt = progress.legStartedAt || (legTimes.legStartedAtMs ? new Date(legTimes.legStartedAtMs).toISOString() : null);
+    const etaAtMs = legTimes.etaAtMs || null;
+    renderPoolTrackingPanelForNextPickup(nextRider);
+    simulatePickupLeg(originPoint, nextRider, nextRider.eta, legStartedAt, previousRiderName, etaAtMs);
+    lastAppliedPickupIndex = idx;
+}
 function clearActiveRoutePolylines() {
     if (activeRouteRemainingPolyline) {
         activeRouteRemainingPolyline.setMap(null);
@@ -2480,7 +2656,9 @@ function startRealDrivingNavigation() {
     console.log('All riders aboard €” starting real Google Maps driving navigation');
     ridePhase = 'pool-ride';
     rideCompletionPopupShown = false;
+    poolNavigationStarted = true;
     clearTricycleMarkers();
+    clearPoolPickupMarkers();
 
     // Hide tracking panel; navigation tracker will take over
     const trackingPanel = document.getElementById('tracking-panel');
@@ -2705,6 +2883,11 @@ function startFirstPickup() {
     const myRiderId = localStorage.getItem('riderId');
     const firstIsMe = firstRider.id && myRiderId && firstRider.id === myRiderId;
 
+    if (poolSyncState && currentPoolId) {
+        startPoolProgressSync();
+        if (!isPoolLeader()) return;
+    }
+
     const statusDiv = document.getElementById('tracking-status');
     if (statusDiv) statusDiv.innerHTML = `
         <div style="background:${firstIsMe?'#d4edda':'#f8f9fa'};border-radius:10px;padding:${isMobile?'18px':'14px'};">
@@ -2730,6 +2913,16 @@ function startFirstPickup() {
     if (tricycleSimulationInterval) { clearInterval(tricycleSimulationInterval); tricycleSimulationInterval = null; }
     if (tricycleRoutePolyline) tricycleRoutePolyline.setMap(null);
     if (tricycleMarker) tricycleMarker.setMap(null);
+
+    // Sync progress for multi-device mode
+    if (poolSyncState && isPoolLeader()) {
+        const legTimes = getPoolLegTimes(0);
+        postPoolProgress({
+            currentPickupIndex: 0,
+            phase: 'pickup',
+            legStartedAt: legTimes.legStartedAtMs ? new Date(legTimes.legStartedAtMs).toISOString() : new Date(getSyncedNowMs()).toISOString()
+        });
+    }
 
     // Pass moveToNextPickup as the onComplete callback
     simulateTricycleRoute(
@@ -2868,6 +3061,7 @@ function showPickedUpConfirmation(rider, onConfirm) {
 // ============================================
 function moveToNextPickup() {
     if (!poolRideData) return;
+    if (poolSyncState && !isPoolLeader()) return;
 
     const justPickedUp = poolRideData.riders[currentPickupIndex];
     currentPickupIndex++;
@@ -2878,66 +3072,26 @@ function moveToNextPickup() {
         const previousRider = justPickedUp;
 
         const doMoveToNext = () => {
-            // Update tracking panel for this leg
-            const trackingPanel = document.getElementById('tracking-panel');
-            if (trackingPanel) trackingPanel.innerHTML = `
-                <div style="padding:${isMobile?'20px':'15px'};">
-                    ${isMobile?'<div style="width:50px;height:5px;background:#ccc;border-radius:3px;margin:0 auto 15px;"></div>':''}
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                        <h3 style="margin:0;color:#004080;font-size:${isMobile?'1.2em':'1.05em'};"><i class="fas fa-shuttle-van"></i> Pickup ${currentPickupIndex+1} of ${poolRideData.riders.length}</h3>
-                        <button onclick="hideTrackingPanel()" style="padding:${isMobile?'12px 18px':'8px 12px'};background:#6c757d;color:white;border:none;border-radius:${isMobile?'10px':'6px'};cursor:pointer;font-size:${isMobile?'0.9em':'0.8em'};"><i class="fas fa-eye-slash"></i> Hide</button>
-                    </div>
-                    <div style="background:#e9ecef;border-radius:50px;height:8px;margin-bottom:15px;overflow:hidden;">
-                        <div style="background:#004080;height:100%;width:${Math.round((currentPickupIndex / poolRideData.riders.length) * 100)}%;border-radius:50px;transition:width 0.5s;"></div>
-                    </div>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:15px;">
-                        ${poolRideData.riders.map((r, i) => `
-                            <div style="padding:4px 10px;border-radius:50px;font-size:0.8em;font-weight:bold;
-                                background:${i < currentPickupIndex ? '#28a745' : i === currentPickupIndex ? '#ffc107' : '#e9ecef'};
-                                color:${i < currentPickupIndex ? 'white' : i === currentPickupIndex ? '#333' : '#666'};">
-                                ${i < currentPickupIndex ? 'œ“ ' : i === currentPickupIndex ? '›º ' : ''}${r.name || 'Rider ' + (i+1)}
-                            </div>`).join('')}
-                    </div>
-                    <div style="background:#fff3cd;border-radius:${isMobile?'12px':'10px'};padding:${isMobile?'15px':'12px'};margin-bottom:12px;">
-                        <div style="font-size:0.8em;color:#856404;margin-bottom:5px;font-weight:bold;">NOW HEADING TO</div>
-                        <div style="font-size:${isMobile?'1.1em':'1em'};font-weight:bold;color:#333;">${nextRider.name || 'Rider ' + (currentPickupIndex+1)}</div>
-                    </div>
-                    <div style="background:#e9f7ff;border-radius:${isMobile?'12px':'10px'};padding:${isMobile?'14px':'10px'};margin-bottom:15px;">
-                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                            <i class="fas fa-user" style="color:#004080;"></i>
-                            <span style="font-weight:bold;">${poolRideData.tricycle.driver}</span>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:10px;">
-                            <i class="fas fa-phone" style="color:#004080;"></i>
-                            <span>${poolRideData.tricycle.phone}</span>
-                        </div>
-                    </div>
-                    <div id="tracking-status">
-                        <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:center;">
-                            <i class="fas fa-circle-notch fa-spin" style="color:#004080;font-size:${isMobile?'28px':'22px'};"></i>
-                            <p style="margin-top:12px;font-weight:bold;color:#004080;">En route to ${nextRider.name || 'next rider'}€¦</p>
-                            <p style="color:#28a745;font-weight:bold;font-size:${isMobile?'1.2em':'1.1em'};margin-top:4px;">ETA: ${nextRider.eta} min</p>
-                        </div>
-                    </div>
-                    <div style="display:flex;gap:10px;margin-top:15px;">
-                        <button onclick="centerOnTricycle()" style="flex:1;padding:${isMobile?'13px':'10px'};background:#17a2b8;color:white;border:none;border-radius:${isMobile?'10px':'8px'};cursor:pointer;font-weight:bold;">
-                            <i class="fas fa-crosshairs"></i> Track
-                        </button>
-                        <button onclick="cancelReservationAndClear()" style="flex:1;padding:${isMobile?'13px':'10px'};background:#dc3545;color:white;border:none;border-radius:${isMobile?'10px':'8px'};cursor:pointer;font-weight:bold;">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-                    </div>
-                </div>`;
+            renderPoolTrackingPanelForNextPickup(nextRider);
 
             if (tricycleSimulationInterval) { clearInterval(tricycleSimulationInterval); tricycleSimulationInterval = null; }
             if (tricycleRoutePolyline) tricycleRoutePolyline.setMap(null);
 
-            simulateTricycleRoute(
+            if (poolSyncState && isPoolLeader()) {
+                const legTimes = getPoolLegTimes(currentPickupIndex);
+                postPoolProgress({
+                    currentPickupIndex,
+                    phase: 'pickup',
+                    legStartedAt: legTimes.legStartedAtMs ? new Date(legTimes.legStartedAtMs).toISOString() : new Date(getSyncedNowMs()).toISOString()
+                });
+            }
+            simulatePickupLeg(
                 { lat:previousRider.pickupLat, lng:previousRider.pickupLng },
-                { lat:nextRider.pickupLat, lng:nextRider.pickupLng },
+                nextRider,
                 nextRider.eta,
-                `Picking up ${nextRider.name || 'Rider ' + (currentPickupIndex+1)}`,
-                () => moveToNextPickup()
+                null,
+                previousRider.name || 'Previous rider',
+                getPoolLegTimes(currentPickupIndex)?.etaAtMs || null
             );
             showNextRiderNotification(nextRider, previousRider.name || 'Previous rider', nextRider.eta);
         };
@@ -2949,6 +3103,13 @@ function moveToNextPickup() {
         const lastRider = poolRideData.riders[poolRideData.riders.length - 1];
 
         // Show "all aboard" summary popup then start real navigation
+        if (poolSyncState && isPoolLeader()) {
+            postPoolProgress({
+                currentPickupIndex: poolRideData.riders.length,
+                phase: 'to_destination',
+                legStartedAt: new Date(getSyncedNowMs()).toISOString()
+            });
+        }
         showAllRidersAboardPopup(lastRider, () => {
             startRealDrivingNavigation();
         });
@@ -3482,14 +3643,18 @@ function clearAllDisplays() {
     if (tricycleSimulationInterval) { clearInterval(tricycleSimulationInterval); tricycleSimulationInterval=null; }
     if (kekePoolRefreshInterval) { clearInterval(kekePoolRefreshInterval); kekePoolRefreshInterval=null; }
     if (pickupSimulationInterval) { clearInterval(pickupSimulationInterval); pickupSimulationInterval=null; }
+    if (poolProgressPollInterval) { clearInterval(poolProgressPollInterval); poolProgressPollInterval=null; }
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId=null; }
     clearTricycleVisualization();
     clearActiveRoutePolylines();
     clearTricycleMarkers();
+    clearPoolPickupMarkers();
     document.getElementById("mode-selector").classList.add("hidden");
     if (showPanelBtn) showPanelBtn.style.display = 'none';
     route = null; currentStepIndex = 0; travelMode = null; navTrackerCollapsed = false;
     rideCompletionPopupShown = false;
+    poolNavigationStarted = false;
+    lastAppliedPickupIndex = -1;
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     if (map && userLocation) { map.setCenter(userLocation); map.setZoom(isMobile?16:17); }
     showControls();
