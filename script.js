@@ -2636,10 +2636,10 @@ async function calculatePoolETAAndStart() {
                 }
 
                 const ridersBase = optimizedRoute.estimatedPickupOrder || poolState.riders || [];
-                const pickupPlan = (poolState.syncState && poolState.syncState.pickupPlan) ? poolState.syncState.pickupPlan : [];
-                const planById = new Map(pickupPlan.map(p => [p.riderId, p]));
+                const pickupPlanFromSync = (poolState.syncState && poolState.syncState.pickupPlan) ? poolState.syncState.pickupPlan : [];
+                const planById = new Map(pickupPlanFromSync.map(p => [p.riderId, p]));
                 const riders = ridersBase.map((rider, index) => {
-                    const plan = planById.get(rider.id) || pickupPlan[index] || {};
+                    const plan = planById.get(rider.id) || pickupPlanFromSync[index] || {};
                     return {
                         ...rider,
                         id: rider.id || plan.riderId,
