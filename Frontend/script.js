@@ -1046,7 +1046,8 @@ function normalizeDestinationName(name) {
 }
 
 function shouldShowVehicleForSelectedDestination(vehicle) {
-    if (!vehicle || vehicle.reservedForPool !== true) return true;
+    const isPoolLocked = vehicle && (vehicle.reservedForPool === true || !!vehicle.poolId);
+    if (!vehicle || !isPoolLocked) return true;
     if (!selectedDestination) return false;
     const vehiclePoolDestination = normalizeDestinationName(vehicle.poolDestinationName);
     const userDestination = normalizeDestinationName(selectedDestination.name);
@@ -1219,7 +1220,7 @@ function displayTricycles(tricycles) {
         const passengerCount = tricycle.passengerCount || 0;
         const maxCapacity = tricycle.maxCapacity || 4;
         const isFull = passengerCount >= maxCapacity;
-        const isPoolLocked = tricycle.reservedForPool === true;
+        const isPoolLocked = tricycle.reservedForPool === true || !!tricycle.poolId;
         const isUnavailableSolo = tricycle.available === false && !isPoolLocked;
         let batteryClass = passengerCount < 50 ? 'battery-high' : (tricycle.battery < 50 ? 'battery-medium' : 'battery-high');
         if (tricycle.battery < 50) batteryClass = 'battery-medium';
@@ -1238,7 +1239,7 @@ function displayTricycles(tricycles) {
                     ${isPoolLocked?`<span style="margin-left:10px;font-size:0.8em;color:#856404;"><i class="fas fa-users"></i> Keke-Pool only</span>`:''}
                 </div>
                 ${isFull ? `<div style="background:#f8d7da;color:#721c24;padding:${isMobile?'12px':'8px'};border-radius:${isMobile?'10px':'6px'};margin:15px 0;font-size:${isMobile?'0.95em':'0.9em'};text-align:center;"><i class="fas fa-users-slash"></i> FULL</div>` : ''}
-                ${isPoolLocked && !isFull ? `<div style="background:#fff3cd;color:#856404;padding:${isMobile?'12px':'8px'};border-radius:${isMobile?'10px':'6px'};margin:10px 0;font-size:${isMobile?'0.9em':'0.85em'};text-align:center;"><i class="fas fa-info-circle"></i> Keke-Pool riders have joined €” solo booking unavailable</div>` : ''}
+                ${isPoolLocked && !isFull ? `<div style="background:#fff3cd;color:#856404;padding:${isMobile?'12px':'8px'};border-radius:${isMobile?'10px':'6px'};margin:10px 0;font-size:${isMobile?'0.9em':'0.85em'};text-align:center;"><i class="fas fa-info-circle"></i> Keke-Pool riders have joined solo booking unavailable</div>` : ''}
                 <div style="display:flex;justify-content:space-between;margin:15px 0;padding:${isMobile?'10px 0':'5px 0'};">
                     <div style="text-align:center;"><span style="display:block;color:#666;font-size:${isMobile?'0.85em':'0.8em'};">Distance</span><span style="font-weight:bold;color:#004080;font-size:${isMobile?'1.2em':'1.1em'};">${tricycle.distance||'?'} km</span></div>
                     <div style="text-align:center;"><span style="display:block;color:#666;font-size:${isMobile?'0.85em':'0.8em'};">ETA</span><span style="font-weight:bold;color:#28a745;font-size:${isMobile?'1.2em':'1.1em'};">${tricycle.eta||'?'} min</span></div>
@@ -1324,7 +1325,7 @@ function showTricycleInfoWindow(tricycle) {
     const passengerCount = tricycle.passengerCount || 0;
     const maxCapacity = tricycle.maxCapacity || 4;
     const isFull = passengerCount >= maxCapacity;
-    const isPoolLocked = tricycle.reservedForPool === true;
+    const isPoolLocked = tricycle.reservedForPool === true || !!tricycle.poolId;
     let etaText = "Calculating...", distanceText = "Calculating...";
     if (userLocation) {
         getFastETA({ lat:tricycle.lat, lng:tricycle.lng }, userLocation).then(eta => {
@@ -1423,7 +1424,7 @@ function showTricycleDetails(tricycleId) {
             const passengerCount = tricycle.passengerCount || 0;
             const maxCapacity = tricycle.maxCapacity || 4;
             const isFull = passengerCount >= maxCapacity;
-            const isPoolLocked = tricycle.reservedForPool === true;
+    const isPoolLocked = tricycle.reservedForPool === true || !!tricycle.poolId;
             alert(`BABCOCK CAMPUS TRICYCLE${tricycle.name}\‘  Passengers: ${passengerCount}/${maxCapacity} ${isFull?'(FULL)':''}\n•‘ Mode: ${isPoolLocked?'Pool Only':'Solo & Pool'}\n•‘ Color: ${tricycle.color}\n•‘‹ Battery: ${tricycle.battery}%\‘ Driver: ${tricycle.driver||'Not Assigned'}\n•‘ Phone: ${tricycle.phone||'+234 XXX XXX XXXX'}\n•‘Status: ${isFull?'›” FULL':(isPoolLocked?'Pool Only':(tricycle.available?'Available':'›” Reserved'))}\n`);
         });
 }
@@ -2255,7 +2256,7 @@ function calculatePoolETAAndStartLocal() {
     );
 
     if (allAtSameLocation) {
-        console.log('All riders at same location €” group pickup mode');
+        console.log('All riders at same location group pickup mode');
         handleGroupPickup(selectedTricycleForPool, rawRiders[0]);
         return;
     }
@@ -2716,7 +2717,7 @@ function startFirstPickup() {
             </div>` : `
             <div style="text-align:center;">
                 <i class="fas fa-circle-notch fa-spin" style="color:#004080;font-size:${isMobile?'28px':'22px'};"></i>
-                <p style="margin-top:12px;font-weight:bold;color:#004080;">Tricycle heading to ${firstRider.name||'Rider 1'}€¦</p>
+                <p style="margin-top:12px;font-weight:bold;color:#004080;">Tricycle heading to ${firstRider.name||'Rider 1'}</p>
                 <p style="color:#28a745;font-weight:bold;font-size:${isMobile?'1.2em':'1.1em'};">ETA: ${firstRider.eta} min</p>
             </div>`}
         </div>
@@ -2760,7 +2761,7 @@ function showNextRiderNotification(nextRider, prevRiderName, etaMinutes) {
             </div>
             <h2 style="color:#004080;margin:0 0 10px 0;font-size:${isMobile?'1.6em':'1.5em'};">The tricycle is coming for YOU!</h2>
             <p style="color:#333;font-size:${isMobile?'1.1em':'1em'};margin-bottom:8px;"><strong>${prevRiderName}</strong> just boarded.</p>
-            <p style="color:#004080;font-size:${isMobile?'1.05em':'1em'};margin-bottom:18px;font-weight:500;">Please head to your pickup spot and be ready €” the driver is on the way!</p>
+            <p style="color:#004080;font-size:${isMobile?'1.05em':'1em'};margin-bottom:18px;font-weight:500;">Please head to your pickup spot and be ready the driver is on the way!</p>
             <div style="background:#d4edda;border-radius:12px;padding:14px;margin-bottom:22px;border:2px solid #28a745;">
                 <div style="font-size:0.85em;color:#155724;margin-bottom:4px;font-weight:bold;">• Arriving in approximately</div>
                 <div style="font-size:${isMobile?'2.2em':'2em'};font-weight:bold;color:#155724;">${etaMinutes} min</div>
@@ -3054,7 +3055,8 @@ function showETABooking(tricycleId, forcePoolMode = false) {
     fetch(`/api/vehicles/${tricycleId}`)
         .then(res => res.json())
         .then(tricycle => {
-            if (tricycle.reservedForPool === true) {
+            const isPoolLocked = tricycle.reservedForPool === true || !!tricycle.poolId;
+            if (isPoolLocked) {
                 const poolDestination = normalizeDestinationName(tricycle.poolDestinationName);
                 const requestedDestination = normalizeDestinationName(selectedDestination?.name);
                 if (!requestedDestination || !poolDestination || requestedDestination !== poolDestination) {
@@ -3064,12 +3066,12 @@ function showETABooking(tricycleId, forcePoolMode = false) {
             }
             const passengerCount = tricycle.passengerCount || 0;
             const maxCapacity = tricycle.maxCapacity || 4;
-            if (tricycle.available === false && tricycle.reservedForPool !== true) {
+            if (tricycle.available === false && !isPoolLocked) {
                 alert('This tricycle already has an active solo ride and cannot be booked right now.');
                 return;
             }
             if (passengerCount >= maxCapacity) { alert(`This tricycle is full! Maximum ${maxCapacity} passengers.\n\nCurrent: ${passengerCount}/${maxCapacity}`); return; }
-            if (tricycle.reservedForPool === true && !forcePoolMode) {
+            if (isPoolLocked && !forcePoolMode) {
                 // Auto-switch to pool-only booking instead of allowing solo.
                 forcePoolMode = true;
                 alert(`This tricycle already has Keke-Pool riders.\n\nSolo booking is disabled for this vehicle. You can only join the pool.`);
@@ -3093,7 +3095,7 @@ function buildRideTypeToggle(poolOnly) {
             <i class="fas fa-users" style="color:#856404;font-size:1.4em;flex-shrink:0;"></i>
             <div>
                 <div style="font-weight:bold;color:#856404;margin-bottom:2px;">Keke-Pool Mode Only</div>
-                <div style="font-size:0.85em;color:#856404;">This tricycle already has pool riders. Solo booking is unavailable €” you will join the existing pool.</div>
+                <div style="font-size:0.85em;color:#856404;">This tricycle already has pool riders. Solo booking is unavailable you will join the existing pool.</div>
             </div>
         </div>`;
     }
@@ -3115,7 +3117,7 @@ function buildRideTypeToggle(poolOnly) {
 
 function createETAModal(tricycle, passengerCount, maxCapacity, distanceText, etaText, forcePoolMode = false) {
     detectMobile();
-    const poolOnlyMode = forcePoolMode || tricycle.reservedForPool === true;
+    const poolOnlyMode = forcePoolMode || tricycle.reservedForPool === true || !!tricycle.poolId;
     const modalHTML = `
         <div id="etaModal" style="display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;-webkit-overflow-scrolling:touch;">
             <div style="position:absolute;top:${isMobile?'30px':'50%'};left:50%;transform:translate(-50%,${isMobile?'0':'-50%'});background:white;padding:${isMobile?'25px 20px':'25px'};border-radius:${isMobile?'25px':'15px'};max-width:${isMobile?'95%':'500px'};width:${isMobile?'95%':'90%'};max-height:${isMobile?'85vh':'80vh'};overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.2);">
@@ -3337,7 +3339,13 @@ async function confirmReservation(tricycleId, userName) {
         const latestVehicleRes = await fetch(`/api/vehicles/${tricycleId}`);
         if (latestVehicleRes.ok) {
             const latestVehicle = await latestVehicleRes.json();
-            if (latestVehicle.available === false && latestVehicle.reservedForPool !== true) {
+            const isPoolLocked = latestVehicle.reservedForPool === true || !!latestVehicle.poolId;
+            if (isPoolLocked && kekePoolMode === 'solo') {
+                alert('This tricycle is already in a Keke-Pool. Solo booking is not allowed.');
+                closeETAModal();
+                return;
+            }
+            if (latestVehicle.available === false && !isPoolLocked) {
                 alert('This tricycle has already been booked by another rider. Please choose another tricycle.');
                 closeETAModal();
                 if (tricyclePanelVisible) loadAvailableTricycles();
