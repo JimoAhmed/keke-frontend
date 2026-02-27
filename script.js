@@ -1011,6 +1011,23 @@ function isPoolLeader() {
     return leaderId && myId && leaderId === myId;
 }
 
+function getPoolLegTimes(idx) {
+    if (!poolSyncState || !poolSyncState.pickupPlan || poolSyncState.pickupPlan.length === 0) return {};
+    const plan = poolSyncState.pickupPlan.slice().sort((a, b) => (a.pickupOrder || 0) - (b.pickupOrder || 0));
+    const entry = plan[idx];
+    if (!entry) return {};
+    const etaAtMs = entry.etaAt ? new Date(entry.etaAt).getTime() : null;
+    const legMinutes = entry.legEtaMinutes || entry.eta || null;
+    let legStartedAtMs = null;
+    if (idx === 0) {
+        legStartedAtMs = poolSyncState.rideStartAt ? new Date(poolSyncState.rideStartAt).getTime() : null;
+    } else {
+        const prev = plan[idx - 1];
+        legStartedAtMs = prev?.etaAt ? new Date(prev.etaAt).getTime() : null;
+    }
+    return { etaAtMs, legStartedAtMs, legMinutes };
+}
+
 function postPoolProgress(progress) {
     if (!currentPoolId || !progress) return;
     const riderId = localStorage.getItem('riderId');
@@ -1100,10 +1117,12 @@ function renderPoolTrackingPanelForNextPickup(nextRider) {
         </div>`;
 }
 
-function simulatePickupLeg(originPoint, nextRider, etaMinutes, legStartedAt, previousRiderName = 'Previous rider') {
+function simulatePickupLeg(originPoint, nextRider, etaMinutes, legStartedAt, previousRiderName = 'Previous rider', etaAtMs = null) {
     if (!originPoint || !nextRider) return;
     let remaining = etaMinutes;
-    if (legStartedAt) {
+    if (etaAtMs) {
+        remaining = Math.max(1, Math.ceil((etaAtMs - getSyncedNowMs()) / 60000));
+    } else if (legStartedAt) {
         const startedAtMs = new Date(legStartedAt).getTime();
         const elapsedMin = Math.max(0, (getSyncedNowMs() - startedAtMs) / 60000);
         remaining = Math.max(1, Math.ceil(etaMinutes - elapsedMin));
@@ -1145,8 +1164,11 @@ function applyPoolProgress(progress) {
         ? { lat: poolRideData.tricycle.lat, lng: poolRideData.tricycle.lng }
         : { lat: prev.pickupLat, lng: prev.pickupLng };
     const previousRiderName = idx === 0 ? 'Start' : (prev.name || prev.userName || 'Previous rider');
+    const legTimes = getPoolLegTimes(idx);
+    const legStartedAt = progress.legStartedAt || (legTimes.legStartedAtMs ? new Date(legTimes.legStartedAtMs).toISOString() : null);
+    const etaAtMs = legTimes.etaAtMs || null;
     renderPoolTrackingPanelForNextPickup(nextRider);
-    simulatePickupLeg(originPoint, nextRider, nextRider.eta, progress.legStartedAt, previousRiderName);
+    simulatePickupLeg(originPoint, nextRider, nextRider.eta, legStartedAt, previousRiderName, etaAtMs);
     lastAppliedPickupIndex = idx;
 }
 
@@ -3240,10 +3262,11 @@ function startFirstPickup() {
 
     // Sync progress for multi-device mode
     if (poolSyncState && isPoolLeader()) {
+        const legTimes = getPoolLegTimes(0);
         postPoolProgress({
             currentPickupIndex: 0,
             phase: 'pickup',
-            legStartedAt: new Date(getSyncedNowMs()).toISOString()
+            legStartedAt: legTimes.legStartedAtMs ? new Date(legTimes.legStartedAtMs).toISOString() : new Date(getSyncedNowMs()).toISOString()
         });
     }
 
@@ -3402,10 +3425,11 @@ function moveToNextPickup() {
             if (tricycleRoutePolyline) tricycleRoutePolyline.setMap(null);
 
             if (poolSyncState && isPoolLeader()) {
+                const legTimes = getPoolLegTimes(currentPickupIndex);
                 postPoolProgress({
                     currentPickupIndex,
                     phase: 'pickup',
-                    legStartedAt: new Date(getSyncedNowMs()).toISOString()
+                    legStartedAt: legTimes.legStartedAtMs ? new Date(legTimes.legStartedAtMs).toISOString() : new Date(getSyncedNowMs()).toISOString()
                 });
             }
             simulatePickupLeg(
@@ -3413,7 +3437,8 @@ function moveToNextPickup() {
                 nextRider,
                 nextRider.eta,
                 null,
-                previousRider.name || 'Previous rider'
+                previousRider.name || 'Previous rider',
+                getPoolLegTimes(currentPickupIndex)?.etaAtMs || null
             );
             showNextRiderNotification(nextRider, previousRider.name || 'Previous rider', nextRider.eta);
         };
