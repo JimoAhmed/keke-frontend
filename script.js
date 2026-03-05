@@ -603,6 +603,31 @@ function requestRoute(options = {}) {
         travelMode: google.maps.TravelMode[travelMode], provideRouteAlternatives: false
     }, (result, status) => {
         if (status === "OK") {
+            const leg = result.routes?.[0]?.legs?.[0];
+            const straightLineKm = getStraightLineKm(userLocation, { lat:selectedDestination.lat, lng:selectedDestination.lng });
+            const etaSeconds = leg?.duration?.value || 0;
+            if (travelMode === 'DRIVING' && isAbsurdRoute(etaSeconds, straightLineKm)) {
+                directionsService.route({
+                    origin: userLocation,
+                    destination: { lat:selectedDestination.lat, lng:selectedDestination.lng },
+                    travelMode: google.maps.TravelMode.WALKING,
+                    provideRouteAlternatives: false
+                }, (altResult, altStatus) => {
+                    if (altStatus === 'OK') {
+                        routeCache[cacheKey] = altResult; route = altResult; currentStepIndex = 0;
+                        directionsRenderer.setDirections(altResult);
+                        renderActiveRoutePolylines(altResult);
+                        updateTrackerWithRoute(altResult); updateInstruction();
+                    } else {
+                        routeCache[cacheKey] = result; route = result; currentStepIndex = 0;
+                        directionsRenderer.setDirections(result);
+                        renderActiveRoutePolylines(result);
+                        updateTrackerWithRoute(result); updateInstruction();
+                    }
+                    if (options.onComplete) options.onComplete();
+                });
+                return;
+            }
             routeCache[cacheKey] = result; route = result; currentStepIndex = 0;
             directionsRenderer.setDirections(result);
             renderActiveRoutePolylines(result);
@@ -629,15 +654,30 @@ function getFastETA(origin, destination) {
     });
 }
 
-function getAccurateETA(origin, destination) {
+function getStraightLineKm(origin, destination) {
+    const distance = google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(origin.lat, origin.lng),
+        new google.maps.LatLng(destination.lat, destination.lng)
+    );
+    return distance / 1000;
+}
+
+function isAbsurdRoute(etaSeconds, straightLineKm) {
+    const expectedMin = Math.max(1, (straightLineKm / 15) * 60); // campus tricycle speed
+    const etaMin = Math.max(1, Math.ceil((etaSeconds || 0) / 60));
+    if (straightLineKm <= 2 && etaMin >= Math.max(8, expectedMin * 4)) return true;
+    return false;
+}
+
+function getDirectionsETA(origin, destination, mode) {
     return new Promise((resolve) => {
-        const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}|DRIVING|ACCURATE`;
+        const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}|${mode}|ACCURATE`;
         if (etaCache[cacheKey]) { resolve(etaCache[cacheKey]); return; }
         const ds = new google.maps.DirectionsService();
-        ds.route({ origin, destination, travelMode: google.maps.TravelMode.DRIVING }, (result, status) => {
+        ds.route({ origin, destination, travelMode: google.maps.TravelMode[mode] }, (result, status) => {
             if (status === 'OK') {
                 const leg = result.routes[0].legs[0];
-                const eta = { text:leg.duration.text, value:leg.duration.value, distanceText:leg.distance.text, distanceValue:leg.distance.value };
+                const eta = { text:leg.duration.text, value:leg.duration.value, distanceText:leg.distance.text, distanceValue:leg.distance.value, mode };
                 etaCache[cacheKey] = eta; resolve(eta);
             } else {
                 const distance = google.maps.geometry.spherical.computeDistanceBetween(
@@ -646,8 +686,24 @@ function getAccurateETA(origin, destination) {
                 );
                 const distanceKm = distance / 1000;
                 const estimatedMinutes = Math.ceil((distanceKm / 20) * 60);
-                resolve({ text:estimatedMinutes+' min', value:estimatedMinutes*60, distanceText:distanceKm.toFixed(1)+' km', distanceValue:distance });
+                resolve({ text:estimatedMinutes+' min', value:estimatedMinutes*60, distanceText:distanceKm.toFixed(1)+' km', distanceValue:distance, mode });
             }
+        });
+    });
+}
+
+function getAccurateETA(origin, destination) {
+    return new Promise((resolve) => {
+        getDirectionsETA(origin, destination, 'DRIVING').then(async (eta) => {
+            const straightLineKm = getStraightLineKm(origin, destination);
+            if (isAbsurdRoute(eta.value, straightLineKm)) {
+                const walkingEta = await getDirectionsETA(origin, destination, 'WALKING');
+                if (walkingEta.value < eta.value) {
+                    resolve(walkingEta);
+                    return;
+                }
+            }
+            resolve(eta);
         });
     });
 }
