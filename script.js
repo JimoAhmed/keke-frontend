@@ -95,7 +95,7 @@ const POOL_SESSION_KEY = 'activePoolSession';
 const RIDE_RESUME_KEY = 'rideResumeState';
 
 // Route API calls directly to Railway to avoid Vercel rewrite issues.
-const API_BASE_URL = 'https://modest-luck-production-fbd9.up.railway.app';
+const API_BASE_URL = 'https://keke-backend-production.up.railway.app';
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
     if (typeof input === 'string' && input.startsWith('/api/')) {
