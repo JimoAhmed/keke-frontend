@@ -58,6 +58,7 @@ let poolProgressPollInterval = null;
 let poolNavigationStarted = false;
 let lastAppliedPickupIndex = -1;
 let serverClockOffsetMs = 0;
+let pendingPoolProgress = null;
 let kekePoolGroup = {
     id: null,
     destination: null,
@@ -332,6 +333,7 @@ async function restorePoolRide(resumeState) {
     currentPoolId = poolState.id || resumeState.poolId;
     kekePoolGroup = poolState;
     poolSyncState = poolState.syncState || null;
+    pendingPoolProgress = poolState.progress || null;
     selectedDestination = resumeState.destination || poolState.destination || selectedDestination;
     if (poolState.assignedVehicle) selectedTricycle = poolState.assignedVehicle;
     ridePhase = (poolState.riders.length >= 4 || poolState.status === 'ready') ? 'pool-ride' : 'pool-waiting';
@@ -786,7 +788,7 @@ function startDirections(mode) {
             console.warn('getCurrentPosition failed before watch:', error);
             startWatchingPosition();
         },
-        { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
 }
 
@@ -2723,8 +2725,8 @@ async function calculatePoolETAAndStart() {
                         ...rider,
                         id: rider.id || plan.riderId,
                         name: rider.name || rider.userName || plan.riderName || `Rider ${index + 1}`,
-                        pickupLat: rider.pickupLat ?? plan.pickupLat ?? rider.lat,
-                        pickupLng: rider.pickupLng ?? plan.pickupLng ?? rider.lng,
+                        pickupLat: rider.pickupLat ?? plan.pickupLat ?? rider.lat ?? userLocation?.lat,
+                        pickupLng: rider.pickupLng ?? plan.pickupLng ?? rider.lng ?? userLocation?.lng,
                         eta: rider.eta ?? plan.legEtaMinutes ?? 1,
                         cumulativeETA: rider.cumulativeETA ?? plan.cumulativeETA ?? (rider.eta ?? 1),
                         pickupOrder: rider.pickupOrder ?? plan.pickupOrder ?? null,
@@ -2782,6 +2784,14 @@ async function calculatePoolETAAndStart() {
                 tricyclePanelVisible = false;
                 hideControls();
                 hideEndNavigationButton();
+
+                if (pendingPoolProgress) {
+                    renderPoolPickupMarkers(orderedRiders);
+                    startPoolProgressSync();
+                    applyPoolProgress(pendingPoolProgress);
+                    pendingPoolProgress = null;
+                    return;
+                }
 
                 if (poolSyncState?.samePickupLocation && orderedRiders.length > 0) {
                     renderPoolPickupMarkers([orderedRiders[0]]);
